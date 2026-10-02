@@ -1,0 +1,1666 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tischplan</title>
+<style>
+/* =========================================================
+   Tischplan – Phase 1 (MVP + Hotel)
+   Reine HTML/JS-App, Daten im Browser (localStorage)
+   ========================================================= */
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --panel2:#f9fafb; --line:#dde1e6; --text:#1d2329; --muted:#66707a;
+  --accent:#1f6feb; --accent-t:#fff; --danger:#d1242f; --warn:#bf8700; --ok:#1a7f37;
+  --st-frei:#e9edf1; --st-reserviert:#4f8ef7; --st-bald:#a371f7; --st-platziert:#2da44e;
+  --st-rechnung:#f0883e; --st-ueberfaellig:#e5534b; --st-gesperrt:#8c959f; --st-ueberzogen:#cf222e;
+  --hotel:#0e8a7d; --plan-bg:#fbfbfc; --plan-grid:#eef0f3; --decor:#c9ced4;
+  --shadow:0 2px 10px rgba(0,0,0,.08); --r:10px;
+}
+:root[data-theme="dark"]{
+  --bg:#0f1419; --panel:#171d24; --panel2:#1d242c; --line:#2c353f; --text:#e6edf3; --muted:#8b949e;
+  --accent:#4c8dff; --st-frei:#2a323b; --plan-bg:#141a20; --plan-grid:#1c232b; --decor:#3a444f;
+  --shadow:0 2px 10px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 14px;min-height:40px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-t);border-color:var(--accent)}
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.small{min-height:32px;padding:4px 10px;font-size:13px}
+.btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+input,select,textarea{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:8px 10px;min-height:40px;width:100%}
+textarea{min-height:64px;resize:vertical}
+input[type=checkbox]{width:20px;height:20px;min-height:0}
+label{font-size:13px;color:var(--muted);display:block}
+label>input,label>select,label>textarea{margin-top:3px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.muted{color:var(--muted)}
+.chk{display:flex;align-items:center;gap:6px;color:var(--text);font-size:14px}
+.hidden{display:none!important}
+
+/* ---------- Layout ---------- */
+header{display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;flex-wrap:wrap}
+header .brand{font-weight:700;font-size:17px;margin-right:6px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{border:0;background:none;padding:9px 12px;border-radius:8px;color:var(--muted);min-height:40px}
+nav button.active{background:var(--accent);color:#fff}
+header .spacer{flex:1}
+.ctx{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ctx input,.ctx select{width:auto;min-height:38px}
+main{padding:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.panel h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--line);font-size:15px}
+.panel .body{padding:12px 14px}
+
+/* ---------- Live ---------- */
+.live{display:grid;grid-template-columns:1fr 340px;gap:14px;align-items:start}
+.roomtabs{display:flex;gap:6px;padding:10px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center}
+.plan-wrap{padding:8px;overflow:auto}
+svg.plan{width:100%;height:auto;display:block;background:var(--plan-bg);border-radius:8px;touch-action:none;user-select:none}
+.legend{display:flex;gap:12px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.reslist{max-height:calc(100vh - 230px);overflow:auto}
+.ritem{display:flex;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);cursor:grab;touch-action:none;align-items:center}
+.ritem:hover{background:var(--panel2)}
+.ritem .time{font-weight:700;width:46px}
+.ritem .main{flex:1;min-width:0}
+.ritem .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ritem .sub{font-size:12px;color:var(--muted)}
+.ritem.unassigned{border-left:4px solid var(--danger)}
+.ritem.cancel{opacity:.45}
+.badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:20px;background:var(--panel2);border:1px solid var(--line);color:var(--text);white-space:nowrap}
+.badge.st{color:#fff;border:0}
+.badge.hotel{background:var(--hotel);color:#fff;border:0}
+.badge.warn{background:var(--danger);color:#fff;border:0}
+.kpis{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.kpi{flex:1;min-width:70px;background:var(--panel2);border-radius:8px;padding:6px 8px;text-align:center}
+.kpi b{display:block;font-size:18px}
+.kpi small{color:var(--muted);font-size:11px}
+
+/* ---------- Gantt ---------- */
+.gantt{overflow:auto;max-height:calc(100vh - 150px);position:relative}
+.g-head,.g-row{display:flex;position:relative}
+.g-head{position:sticky;top:0;z-index:3;background:var(--panel)}
+.g-label{width:150px;min-width:150px;position:sticky;left:0;background:var(--panel);z-index:2;padding:0 10px;display:flex;align-items:center;border-right:1px solid var(--line);font-size:13px;gap:6px}
+.g-row{height:38px;border-bottom:1px solid var(--line)}
+.g-row.group .g-label{font-weight:700;background:var(--panel2)}
+.g-row.group{height:28px;background:var(--panel2)}
+.g-track{position:relative;flex:none}
+.g-tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);font-size:11px;color:var(--muted);padding-left:3px}
+.g-tick.half{border-left-style:dashed;opacity:.6}
+.g-now{position:absolute;top:0;bottom:0;width:2px;background:var(--danger);z-index:1;pointer-events:none}
+.g-bar{position:absolute;top:4px;height:29px;border-radius:6px;color:#fff;font-size:12px;padding:3px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:grab;touch-action:none;box-shadow:0 1px 3px rgba(0,0,0,.2);z-index:1}
+.g-bar.conflict{outline:3px solid var(--danger);outline-offset:-1px}
+.g-bar .rs{position:absolute;right:0;top:0;bottom:0;width:10px;cursor:ew-resize}
+.g-head .g-track{height:28px}
+
+/* ---------- Tabellen ---------- */
+table.list{width:100%;border-collapse:collapse;font-size:14px}
+table.list th,table.list td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+table.list th{font-size:12px;color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--panel)}
+table.list tr.clickable{cursor:pointer}
+table.list tr.clickable:hover td{background:var(--panel2)}
+.filters{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}
+.filters>*{width:auto}
+
+/* ---------- Hotel ---------- */
+.hotel{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.stay-chip{display:inline-flex;gap:6px;align-items:center;background:var(--hotel);color:#fff;border-radius:8px;padding:6px 10px;margin:3px;cursor:grab;touch-action:none;font-size:13px}
+.stay-chip.ok{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+
+/* ---------- Editor ---------- */
+.editor{display:grid;grid-template-columns:200px 1fr 290px;gap:14px;align-items:start}
+.toolbox .btn{width:100%;justify-content:flex-start;margin-bottom:6px}
+.props label{margin-bottom:8px}
+
+/* ---------- Modal/Popup/Toast ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:14px}
+.modal{background:var(--panel);border-radius:14px;max-width:720px;width:100%;max-height:calc(100vh - 28px);overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.modal .mh{display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:1}
+.modal .mh h2{margin:0;font-size:18px;flex:1}
+.modal .mb{padding:16px}
+.modal .mf{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--panel);flex-wrap:wrap}
+.warnbox{background:rgba(209,36,47,.1);border:1px solid var(--danger);color:var(--danger);border-radius:8px;padding:8px 10px;margin:8px 0;font-size:13px}
+.infobox{background:rgba(31,111,235,.08);border:1px solid var(--accent);border-radius:8px;padding:8px 10px;margin:8px 0;font-size:13px}
+.sugg{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#24292f;color:#fff;padding:10px 16px;border-radius:10px;z-index:200;box-shadow:var(--shadow);max-width:90vw}
+.toast.err{background:var(--danger)}
+.drag-ghost{position:fixed;z-index:300;pointer-events:none;background:var(--accent);color:#fff;padding:6px 10px;border-radius:8px;font-size:13px;box-shadow:var(--shadow);transform:translate(-50%,-120%)}
+.stbtns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stbtns .btn{justify-content:center;min-height:48px}
+
+/* ---------- Login ---------- */
+.login{max-width:380px;margin:10vh auto}
+.userbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.userbtns .btn{min-height:64px;flex-direction:column;justify-content:center}
+
+/* ---------- Berichte / Druck ---------- */
+.report h2{margin:0 0 4px}
+.report h4{margin:16px 0 6px}
+.slotbar{display:flex;align-items:flex-end;gap:3px;height:120px;border-bottom:1px solid var(--line);margin:6px 0 2px}
+.slotbar div{flex:1;background:var(--accent);border-radius:3px 3px 0 0;position:relative;min-height:1px}
+.slotbar div span{position:absolute;top:-16px;left:0;right:0;text-align:center;font-size:10px;color:var(--muted)}
+.slotlbl{display:flex;gap:3px;font-size:10px;color:var(--muted)}
+.slotlbl span{flex:1;text-align:center}
+#printArea{display:none}
+@media print{
+  body *{visibility:hidden}
+  #printArea,#printArea *{visibility:visible}
+  #printArea{display:block;position:absolute;left:0;top:0;width:100%;padding:0;color:#000;background:#fff}
+  #printArea table.list th{position:static}
+  #printArea svg.plan{background:#fff}
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1100px){
+  .live{grid-template-columns:1fr}
+  .reslist{max-height:none}
+  .editor{grid-template-columns:1fr}
+  .hotel{grid-template-columns:1fr}
+}
+@media (max-width:640px){
+  main{padding:8px}
+  .grid2,.grid3{grid-template-columns:1fr}
+  .stbtns{grid-template-columns:1fr 1fr}
+  header .brand{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="printArea"></div>
+<script>
+'use strict';
+/* =========================================================
+   1) Konstanten, Übersetzungen, Hilfsfunktionen
+   ========================================================= */
+const STORE_KEY = 'tischplan.v1';
+const LANG = 'de'; // vorbereitet für 'it' / 'en'
+const I18N = {
+  de: {
+    live:'Live-Plan', zeit:'Zeitleiste', res:'Reservierungen', hotel:'Hotelgäste', berichte:'Berichte',
+    editor:'Raumplan-Editor', settings:'Einstellungen',
+    angefragt:'Angefragt', bestaetigt:'Bestätigt', eingetroffen:'Eingetroffen', platziert:'Platziert',
+    rechnung:'Rechnung', abgeschlossen:'Abgeschlossen', storniert:'Storniert', noshow:'No-Show',
+    frei:'Frei', reserviert:'Reserviert', bald:'Bald fällig', ueberfaellig:'Überfällig', gesperrt:'Gesperrt', ueberzogen:'Zeit überzogen',
+    admin:'Admin / Betriebsleitung', empfang:'Empfang / Host', service:'Service', kueche:'Küche',
+    UF:'Übernachtung/Frühstück', HP:'Halbpension', VP:'Vollpension', AI:'All-Inclusive',
+    fenster:'Fensterplatz', rollstuhl:'Rollstuhlgerecht', hund:'Hundeplatz', kinder:'Kinderecke', ruhig:'Ruhig'
+  }
+};
+const t = k => (I18N[LANG] && I18N[LANG][k]) || k;
+
+const RES_STATUS = {
+  angefragt:'#8c959f', bestaetigt:'#4f8ef7', eingetroffen:'#a371f7', platziert:'#2da44e',
+  rechnung:'#f0883e', abgeschlossen:'#57606a', storniert:'#cf222e', noshow:'#7d2c2c'
+};
+const STATUS_ORDER = ['angefragt','bestaetigt','eingetroffen','platziert','rechnung','abgeschlossen'];
+const TABLE_ST = ['frei','reserviert','bald','platziert','rechnung','ueberfaellig','ueberzogen','gesperrt'];
+const TABLE_ST_ICON = {frei:'',reserviert:'◷',bald:'⏳',platziert:'●',rechnung:'€',ueberfaellig:'!',ueberzogen:'⌛',gesperrt:'✕'};
+const PROPS = ['fenster','rollstuhl','hund','kinder','ruhig'];
+const OCCASIONS = ['','Geburtstag','Jubiläum','Business','Hochzeitstag','Familienfeier','Sonstiges'];
+const SOURCES = ['Telefon','Walk-in','Hotel','Hotel-Rezeption','Website','Google','E-Mail','Persönlich'];
+const BOARDS = ['UF','HP','VP','AI'];
+const BOARD_SERVICES = { UF:[], HP:['abend'], VP:['mittag','abend'], AI:['fruehstueck','mittag','abend'] };
+const ROLE_VIEWS = {
+  admin:['live','zeit','res','hotel','berichte','editor','settings'],
+  empfang:['live','zeit','res','hotel','berichte'],
+  service:['live','zeit','berichte'],
+  kueche:['berichte']
+};
+const OPEN_STATES = ['angefragt','bestaetigt']; // noch nicht eingetroffen
+const SEATED_STATES = ['eingetroffen','platziert','rechnung'];
+
+const $ = (s, el=document) => el.querySelector(s);
+const $$ = (s, el=document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const pad = n => String(n).padStart(2, '0');
+const toMin = s => { const [h, m] = String(s || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
+const fromMin = m => pad(Math.floor(((m % 1440) + 1440) % 1440 / 60)) + ':' + pad(((m % 60) + 60) % 60);
+const dstr = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const today = () => dstr(new Date());
+const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+const addDays = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return dstr(d); };
+const WD = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+const fmtDate = s => { const d = new Date(s + 'T12:00:00'); return WD[d.getDay()] + ', ' + pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear(); };
+const fmtShort = s => { const d = new Date(s + 'T12:00:00'); return WD[d.getDay()] + ' ' + pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.'; };
+const persons = r => (+r.adults || 0) + (+r.children || 0);
+const resStart = r => toMin(r.time);
+const resEnd = r => toMin(r.time) + (+r.duration || 0);
+const overlaps = (a1, a2, b1, b2) => a1 < b2 && b1 < a2;
+const snap = (v, g) => Math.round(v / g) * g;
+
+function toast(msg, type) {
+  $$('.toast').forEach(x => x.remove());
+  const el = document.createElement('div');
+  el.className = 'toast' + (type === 'err' ? ' err' : '');
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), type === 'err' ? 4500 : 2600);
+}
+
+/* =========================================================
+   2) Datenhaltung (localStorage) + Audit-Log
+   ========================================================= */
+let DB = null;
+const S = { // Sitzungszustand (nicht gespeichert)
+  user: null, view: 'live', date: today(), serviceId: null, roomId: null,
+  time: nowMin(), follow: true, edit: { roomId: null, sel: null }, resFilter: {}, hotelDate: today()
+};
+
+function load() {
+  try { DB = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) { DB = null; }
+  if (!DB || !DB.version) { DB = demoData(); save(true); }
+}
+function save(silent) {
+  DB.rev = (DB.rev || 0) + 1;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(DB)); }
+  catch (e) { toast('Speichern fehlgeschlagen: ' + e.message, 'err'); }
+}
+function log(action, detail) {
+  DB.audit.unshift({ ts: Date.now(), user: S.user ? S.user.name : '-', action, detail: detail || '' });
+  if (DB.audit.length > 1500) DB.audit.length = 1500;
+}
+// Synchronisation zwischen Browser-Tabs am selben Gerät
+window.addEventListener('storage', e => { if (e.key === STORE_KEY && e.newValue) { DB = JSON.parse(e.newValue); render(); } });
+
+/* =========================================================
+   3) Fachlogik: Services, Verweildauer, Konflikte, Vorschläge
+   ========================================================= */
+const svcById = id => DB.services.find(s => s.id === id);
+const tblById = id => DB.tables.find(x => x.id === id);
+const roomById = id => DB.rooms.find(x => x.id === id);
+const stayById = id => DB.stays.find(x => x.id === id);
+const tblNames = ids => (ids || []).map(id => (tblById(id) || {}).name || '?').join('+');
+
+function turnTime(serviceId, p) {
+  const s = svcById(serviceId); if (!s) return 120;
+  const row = [...s.turn].sort((a, b) => a.maxP - b.maxP).find(x => p <= x.maxP);
+  return row ? row.min : s.turn[s.turn.length - 1].min;
+}
+function serviceForTime(min) {
+  const list = DB.services.filter(s => min >= toMin(s.start) - 60 && min <= toMin(s.end));
+  if (list.length) return list[list.length - 1].id;
+  const later = DB.services.find(s => toMin(s.start) > min);
+  return (later || DB.services[DB.services.length - 1]).id;
+}
+function isBlocked(tb, date, serviceId) {
+  return (tb.blocks || []).some(b => b.date === date && (!b.serviceId || b.serviceId === serviceId));
+}
+// Reservierungen, die einen Tisch belegen (für Konflikte)
+const occupies = r => r.status !== 'storniert' && r.status !== 'noshow' && r.status !== 'abgeschlossen';
+
+function tableBusy(tid, date, start, end, exceptId) {
+  return DB.reservations.filter(o => o.id !== exceptId && o.date === date && occupies(o) &&
+    (o.tableIds || []).includes(tid) && overlaps(start, end, resStart(o), resEnd(o)));
+}
+function capOf(ids) {
+  const tb = ids.map(tblById).filter(Boolean);
+  return { max: tb.reduce((a, x) => a + (+x.max), 0), min: tb.reduce((a, x) => a + (+x.min), 0) };
+}
+
+/** Liefert eine Liste von Warnungen für eine (geplante) Reservierung */
+function conflicts(r) {
+  const out = [];
+  if (!occupies(r)) return out;
+  const st = resStart(r), en = resEnd(r), p = persons(r), s = svcById(r.serviceId);
+  for (const tid of r.tableIds || []) {
+    const tb = tblById(tid);
+    if (!tb) { out.push('Tisch existiert nicht mehr'); continue; }
+    if (isBlocked(tb, r.date, r.serviceId)) out.push(`Tisch ${tb.name} ist gesperrt`);
+    for (const o of tableBusy(tid, r.date, st, en, r.id))
+      out.push(`Überschneidung an Tisch ${tb.name} mit ${o.name} (${o.time}–${fromMin(resEnd(o))})`);
+  }
+  if ((r.tableIds || []).length) {
+    const c = capOf(r.tableIds);
+    if (p > c.max) out.push(`Tisch zu klein: ${p} Pers., max. ${c.max}`);
+    else if (p < c.min) out.push(`Tisch zu groß: ${p} Pers., min. ${c.min}`);
+  }
+  if (s && s.pacing > 0) {
+    const slot = Math.floor(st / 15) * 15;
+    const covers = DB.reservations.filter(o => o.id !== r.id && o.date === r.date && o.serviceId === r.serviceId &&
+      o.status !== 'storniert' && o.status !== 'noshow' && Math.floor(resStart(o) / 15) * 15 === slot)
+      .reduce((a, o) => a + persons(o), 0) + p;
+    if (covers > s.pacing) out.push(`Pacing: ${covers} Gäste im Slot ${fromMin(slot)} (Limit ${s.pacing})`);
+  }
+  if (s && (st < toMin(s.start) || st > toMin(s.end))) out.push(`Uhrzeit außerhalb Service ${s.name} (${s.start}–${s.end})`);
+  // Doppelbuchung desselben Gastes (gleicher Hotelaufenthalt oder Telefon) – auch über Räume/Outlets hinweg
+  const dup = DB.reservations.find(o => o.id !== r.id && o.date === r.date && occupies(o) &&
+    overlaps(st, en, resStart(o), resEnd(o)) &&
+    ((r.stayId && o.stayId === r.stayId) || (r.phone && o.phone && o.phone.replace(/\D/g, '') === r.phone.replace(/\D/g, ''))));
+  if (dup) out.push(`Mögliche Doppelbuchung: ${dup.name} ist bereits um ${dup.time} reserviert`);
+  return [...new Set(out)];
+}
+
+/** Tischvorschläge (einzelne Tische und Kombinationen), sortiert nach bester Passung */
+function suggestTables(r, limit = 6) {
+  const st = resStart(r), en = resEnd(r), p = persons(r);
+  const wish = r.wishes || [];
+  const free = tid => { const tb = tblById(tid); return tb && !isBlocked(tb, r.date, r.serviceId) && !tableBusy(tid, r.date, st, en, r.id).length; };
+  const prefRoom = r.roomPref || S.roomId;
+  const out = [];
+  for (const tb of DB.tables) {
+    if (p > +tb.max || !free(tb.id)) continue;
+    // Tische unter Mindestbelegung nur als Ausweichvorschlag (hohe Strafpunkte)
+    let score = (tb.max - p) * 10 + (tb.roomId !== prefRoom ? 4 : 0) + (p < +tb.min ? 40 + (tb.min - p) * 20 : 0);
+    score -= wish.filter(w => (tb.props || []).includes(w)).length * 8;
+    out.push({ ids: [tb.id], score });
+  }
+  for (const c of DB.combos) {
+    if (!c.tableIds.every(free)) continue;
+    const cap = capOf(c.tableIds);
+    if (p > cap.max || p <= Math.max(...c.tableIds.map(id => +tblById(id).max))) continue;
+    out.push({ ids: [...c.tableIds], score: (cap.max - p) * 10 + 15 });
+  }
+  return out.sort((a, b) => a.score - b.score).slice(0, limit);
+}
+
+/** Status eines Tisches zu einem Zeitpunkt (Live-Plan) */
+function tableStatusAt(tb, date, serviceId, tm) {
+  if (isBlocked(tb, date, serviceId)) return { st: 'gesperrt' };
+  const rs = DB.reservations.filter(r => r.date === date && (r.tableIds || []).includes(tb.id) && occupies(r))
+    .sort((a, b) => resStart(a) - resStart(b));
+  const seated = rs.find(r => SEATED_STATES.includes(r.status));
+  if (seated) return { st: seated.status === 'rechnung' ? 'rechnung' : (tm > resEnd(seated) ? 'ueberzogen' : 'platziert'), r: seated };
+  const cur = rs.find(r => resStart(r) <= tm && tm < resEnd(r));
+  if (cur) return { st: tm > resStart(cur) + 15 ? 'ueberfaellig' : 'reserviert', r: cur };
+  const next = rs.find(r => resStart(r) > tm);
+  if (next && resStart(next) - tm <= 60) return { st: 'bald', r: next };
+  return { st: 'frei', next };
+}
+
+/* =========================================================
+   4) Hotel: Aufenthalte → Reservierungen je Tag/Service
+   ========================================================= */
+function stayNights(stay) {
+  const out = []; for (let d = stay.arrival; d < stay.departure; d = addDays(d, 1)) out.push(d); return out;
+}
+function stayServices(stay) {
+  return DB.services.filter(s => BOARD_SERVICES[stay.board].includes(s.type) && !s.freeSeating);
+}
+function isInHouse(stay, date) { return stay.arrival <= date && date < stay.departure; }
+
+/** Legt fehlende Reservierungen eines Aufenthalts an, aktualisiert bestehende, entfernt überflüssige */
+function syncStay(stay) {
+  const need = [];
+  for (const d of stayNights(stay)) for (const s of stayServices(stay)) need.push({ date: d, serviceId: s.id, svc: s });
+  const existing = DB.reservations.filter(r => r.stayId === stay.id);
+  for (const ex of existing) {
+    if (!need.some(n => n.date === ex.date && n.serviceId === ex.serviceId) && OPEN_STATES.includes(ex.status))
+      DB.reservations.splice(DB.reservations.indexOf(ex), 1);
+  }
+  for (const n of need) {
+    let r = existing.find(x => x.date === n.date && x.serviceId === n.serviceId && DB.reservations.includes(x));
+    const p = (+stay.adults || 0) + (+stay.children || 0);
+    if (!r) {
+      r = { id: uid(), date: n.date, serviceId: n.serviceId, time: (stay.times && stay.times[n.svc.type]) || n.svc.hotelTime || n.svc.start,
+        duration: turnTime(n.serviceId, p), status: 'bestaetigt', source: 'Hotel', stayId: stay.id, tableIds: [], createdAt: Date.now() };
+      DB.reservations.push(r);
+    }
+    Object.assign(r, { name: `${stay.name} · Zi. ${stay.room}`, adults: stay.adults, children: stay.children,
+      allergies: stay.allergies || '', notes: stay.notes || '', vip: !!stay.vip, phone: stay.phone || '' });
+    if (OPEN_STATES.includes(r.status) && !r.manualTable) r.tableIds = [...(stay.tableIds || [])];
+  }
+}
+/** Prüft, an welchen Tagen der feste Tisch eines Aufenthalts kollidiert */
+function stayTableConflicts(stay, tableIds) {
+  const days = [];
+  for (const d of stayNights(stay)) for (const s of stayServices(stay)) {
+    const own = DB.reservations.find(r => r.stayId === stay.id && r.date === d && r.serviceId === s.id);
+    const st = own ? resStart(own) : toMin(s.hotelTime || s.start);
+    const en = own ? resEnd(own) : st + turnTime(s.id, +stay.adults + +stay.children);
+    for (const tid of tableIds) {
+      const busy = tableBusy(tid, d, st, en, own && own.id).filter(o => o.stayId !== stay.id);
+      if (busy.length) days.push(`${fmtShort(d)} ${s.name}: ${tblById(tid).name} belegt (${busy[0].name})`);
+    }
+  }
+  return days;
+}
+
+/* =========================================================
+   5) Demo-Daten: Hotelrestaurant, 2 Räume, 30 Tische, 1 Woche
+   ========================================================= */
+function demoData() {
+  let seed = 42; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const D = {
+    version: 1, rev: 0, betrieb: 'Hotel Sonnenhof – Restaurant', theme: 'light',
+    rooms: [
+      { id: 'r1', name: 'Restaurant', w: 1000, h: 650, bg: '' },
+      { id: 'r2', name: 'Stube', w: 720, h: 500, bg: '' }
+    ],
+    stations: [
+      { id: 'sA', name: 'Revier A', color: '#1f6feb' },
+      { id: 'sB', name: 'Revier B', color: '#e36209' },
+      { id: 'sC', name: 'Revier Stube', color: '#1a7f37' }
+    ],
+    services: [
+      { id: 'fr', name: 'Frühstück', type: 'fruehstueck', start: '07:00', end: '10:30', hotelTime: '08:00', freeSeating: true, pacing: 0,
+        turn: [{ maxP: 2, min: 45 }, { maxP: 4, min: 60 }, { maxP: 99, min: 75 }], seatings: [] },
+      { id: 'mi', name: 'Mittagessen', type: 'mittag', start: '12:00', end: '14:30', hotelTime: '12:30', freeSeating: false, pacing: 14,
+        turn: [{ maxP: 2, min: 75 }, { maxP: 4, min: 90 }, { maxP: 99, min: 120 }], seatings: [] },
+      { id: 'ab', name: 'Abendessen', type: 'abend', start: '18:00', end: '21:30', hotelTime: '19:00', freeSeating: false, pacing: 18,
+        turn: [{ maxP: 2, min: 105 }, { maxP: 4, min: 120 }, { maxP: 6, min: 150 }, { maxP: 99, min: 180 }], seatings: ['18:30', '20:30'] }
+    ],
+    tables: [], decor: [], combos: [], stays: [], reservations: [], audit: [],
+    users: [
+      { id: 'u1', name: 'Admin', role: 'admin', pin: '0000' },
+      { id: 'u2', name: 'Empfang', role: 'empfang', pin: '1111' },
+      { id: 'u3', name: 'Service', role: 'service', pin: '2222' },
+      { id: 'u4', name: 'Küche', role: 'kueche', pin: '3333' }
+    ],
+    closedDays: []
+  };
+  const T = (roomId, name, shape, x, y, w, h, min, max, station, props = []) =>
+    D.tables.push({ id: 't' + (D.tables.length + 1), roomId, name, shape, x, y, w, h, rot: 0, min, max, station, props, blocks: [] });
+  // Restaurant (20 Tische)
+  for (let i = 0; i < 6; i++) T('r1', 'T' + (i + 1), 'square', 110 + i * 140, 90, 72, 72, 2, 4, 'sA', ['fenster']);
+  for (let i = 0; i < 5; i++) T('r1', 'T' + (i + 7), 'round', 130 + i * 160, 260, 92, 92, 4, 6, i < 3 ? 'sA' : 'sB');
+  for (let i = 0; i < 6; i++) T('r1', 'T' + (i + 12), 'square', 110 + i * 120, 420, 58, 58, 1, 2, 'sB', i === 0 ? ['rollstuhl'] : []);
+  T('r1', 'T18', 'rect', 170, 560, 170, 80, 6, 8, 'sB', ['kinder']);
+  T('r1', 'T19', 'rect', 420, 560, 170, 80, 6, 8, 'sB');
+  T('r1', 'T20', 'rect', 670, 560, 170, 80, 6, 8, 'sB', ['hund']);
+  // Stube (10 Tische)
+  for (let i = 0; i < 3; i++) T('r2', 'S' + (i + 1), 'square', 120 + i * 170, 100, 72, 72, 2, 4, 'sC', ['ruhig']);
+  for (let i = 0; i < 3; i++) T('r2', 'S' + (i + 4), 'round', 120 + i * 170, 250, 90, 90, 4, 6, 'sC');
+  T('r2', 'S7', 'square', 110, 400, 58, 58, 1, 2, 'sC');
+  T('r2', 'S8', 'square', 210, 400, 58, 58, 1, 2, 'sC');
+  T('r2', 'S9', 'rect', 420, 400, 190, 84, 8, 10, 'sC', ['ruhig']);
+  T('r2', 'S10', 'bench', 640, 250, 60, 170, 3, 5, 'sC');
+  const byName = n => D.tables.find(x => x.name === n).id;
+  D.combos = [['T1', 'T2'], ['T3', 'T4'], ['T5', 'T6'], ['T12', 'T13'], ['T14', 'T15'], ['S7', 'S8']]
+    .map(a => ({ id: uid(), name: a.join('+'), tableIds: a.map(byName) }));
+  D.decor = [
+    { id: uid(), roomId: 'r1', type: 'wall', x: 500, y: 12, w: 980, h: 10, rot: 0, text: '' },
+    { id: uid(), roomId: 'r1', type: 'label', x: 500, y: 36, w: 200, h: 20, rot: 0, text: 'Fensterfront / Seeblick' },
+    { id: uid(), roomId: 'r1', type: 'buffet', x: 930, y: 330, w: 60, h: 260, rot: 0, text: 'Buffet' },
+    { id: uid(), roomId: 'r1', type: 'door', x: 930, y: 610, w: 80, h: 14, rot: 0, text: 'Eingang' },
+    { id: uid(), roomId: 'r1', type: 'column', x: 420, y: 345, w: 26, h: 26, rot: 0, text: '' },
+    { id: uid(), roomId: 'r2', type: 'bar', x: 600, y: 60, w: 180, h: 50, rot: 0, text: 'Bar' },
+    { id: uid(), roomId: 'r2', type: 'door', x: 40, y: 480, w: 70, h: 14, rot: 0, text: 'Zugang Restaurant' }
+  ];
+
+  const NAMES = ['Gruber', 'Huber', 'Mair', 'Pichler', 'Rossi', 'Bianchi', 'Hofer', 'Schmid', 'Weber', 'Kofler', 'Ferrari', 'Moser',
+    'Wagner', 'Fischer', 'Ricci', 'Thaler', 'Egger', 'Brunner', 'Colombo', 'Steiner', 'Lang', 'Kerschbaumer', 'Marini', 'Wolf',
+    'Unterhofer', 'Fink', 'Rainer', 'Gamper', 'Romano', 'Baumann', 'Seidl', 'Kaufmann', 'Greco', 'Walder', 'Bauer', 'Esposito'];
+  const ALLERG = ['', '', '', '', '', 'Gluten', 'Laktose', 'Nüsse', 'vegetarisch', 'vegan', 'Schalentiere'];
+  const t0 = today(), nm = nowMin();
+  const statusFor = r => {
+    if (r.date < t0) return 'abgeschlossen';
+    if (r.date > t0) return rnd() < 0.15 ? 'angefragt' : 'bestaetigt';
+    if (resEnd(r) <= nm) return 'abgeschlossen';
+    if (resStart(r) <= nm) return 'platziert';
+    return 'bestaetigt';
+  };
+  // ein gesperrter Tisch heute Abend
+  D.tables.find(x => x.name === 'T20').blocks.push({ date: t0, serviceId: 'ab', reason: 'Firmenfeier (Aufbau)' });
+  DB = D; // Hilfsfunktionen (tableBusy, suggestTables …) arbeiten auf DB
+
+  // Hotelaufenthalte
+  for (let i = 0; i < 24; i++) {
+    const arr = addDays(t0, Math.floor(rnd() * 9) - 4), nights = 3 + Math.floor(rnd() * 5);
+    const adults = rnd() < 0.7 ? 2 : (rnd() < 0.5 ? 1 : 3), children = rnd() < 0.25 ? 1 + Math.floor(rnd() * 2) : 0;
+    const board = rnd() < 0.7 ? 'HP' : (rnd() < 0.5 ? 'VP' : 'UF');
+    D.stays.push({ id: uid(), room: String(101 + i + (i > 11 ? 88 : 0)), name: NAMES[i], adults, children, arrival: arr, departure: addDays(arr, nights),
+      board, tableIds: [], allergies: pick(ALLERG), notes: '', vip: rnd() < 0.12, phone: '', times: { abend: pick(['18:30', '19:00', '19:00', '19:30']) } });
+  }
+  // fester Tisch für die meisten – einige bewusst offen (Anreise heute/morgen)
+  let openLeft = 3;
+  for (const st of D.stays) {
+    if (st.board === 'UF') continue;
+    syncStay(st);
+    if ((st.arrival === t0 || st.arrival === addDays(t0, 1)) && openLeft > 0) { openLeft--; continue; }
+    const p = st.adults + st.children;
+    const cand = D.tables.filter(x => p <= x.max && p >= x.min).sort((a, b) => a.max - b.max)
+      .find(x => !stayTableConflicts(st, [x.id]).length);
+    if (cand) { st.tableIds = [cand.id]; syncStay(st); }
+  }
+  // Externe Reservierungen
+  const PHONE = () => '+39 ' + (330 + Math.floor(rnd() * 60)) + ' ' + Math.floor(1000000 + rnd() * 8999999);
+  for (let d = -2; d < 7; d++) {
+    const date = addDays(t0, d);
+    for (const svc of D.services.filter(s => !s.freeSeating)) {
+      const n = svc.type === 'abend' ? 9 + Math.floor(rnd() * 5) : 4 + Math.floor(rnd() * 4);
+      for (let k = 0; k < n; k++) {
+        const startM = toMin(svc.start) + Math.floor(rnd() * ((toMin(svc.end) - toMin(svc.start) - 30) / 15)) * 15;
+        const adults = rnd() < 0.55 ? 2 : (rnd() < 0.6 ? 4 : (rnd() < 0.5 ? 3 : 6)), children = rnd() < 0.2 ? 1 : 0;
+        const r = { id: uid(), date, serviceId: svc.id, time: fromMin(startM), adults, children, duration: turnTime(svc.id, adults + children),
+          name: pick(NAMES) + (rnd() < 0.5 ? ' ' + pick(['A.', 'M.', 'S.', 'L.', 'K.']) : ''), phone: PHONE(), email: '',
+          notes: rnd() < 0.15 ? pick(['Kinderwagen', 'Ruhiger Tisch gewünscht', 'Kommt evtl. später', 'Stammgast – bevorzugt Fenster']) : '',
+          occasion: rnd() < 0.12 ? pick(OCCASIONS.slice(1)) : '', allergies: pick(ALLERG), highchair: children > 0 && rnd() < 0.5,
+          vip: rnd() < 0.07, source: pick(['Telefon', 'Telefon', 'Website', 'Google', 'E-Mail']), tableIds: [], status: 'bestaetigt', createdAt: Date.now() };
+        r.status = statusFor(r);
+        const sug = suggestTables(r, 1);
+        if (sug.length && !(d === 0 && k < 2 && svc.type === 'abend')) r.tableIds = sug[0].ids;
+        D.reservations.push(r);
+      }
+    }
+  }
+  for (const r of D.reservations) if (r.stayId) r.status = statusFor(r);
+  // ein No-Show und ein Storno in der Vergangenheit/heute zur Demonstration
+  const past = D.reservations.filter(r => r.date < t0 && !r.stayId);
+  if (past[0]) past[0].status = 'noshow';
+  if (past[1]) past[1].status = 'storniert';
+  D.audit.push({ ts: Date.now(), user: 'System', action: 'Demo-Daten erzeugt', detail: '' });
+  return D;
+}
+
+/* =========================================================
+   6) UI-Helfer: Modal, Bestätigung, Drag & Drop (Maus + Touch)
+   ========================================================= */
+let DRAGGING = false;
+function openModal(title, body, buttons = [], onMount) {
+  closeModal();
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg'; bg.id = 'modalBg';
+  bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="mh"><h2>${esc(title)}</h2>
+    <button class="btn small" data-x aria-label="Schließen">✕</button></div><div class="mb">${body}</div>
+    ${buttons.length ? `<div class="mf">${buttons.map((b, i) => `<button class="btn ${b.cls || ''}" data-b="${i}">${esc(b.label)}</button>`).join('')}</div>` : ''}</div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener('pointerdown', e => { if (e.target === bg) bg.dataset.down = '1'; });
+  bg.addEventListener('click', e => { if (e.target === bg && bg.dataset.down) closeModal(); delete bg.dataset.down; });
+  $('[data-x]', bg).onclick = closeModal;
+  $$('[data-b]', bg).forEach(el => el.onclick = () => { const b = buttons[+el.dataset.b]; if (b.action && b.action(bg) === false) return; if (!b.keep) closeModal(); });
+  if (onMount) onMount(bg);
+  return bg;
+}
+function closeModal() { const m = $('#modalBg'); if (m) m.remove(); }
+const modalOpen = () => !!$('#modalBg');
+function confirmModal(title, lines, onYes, yesLabel = 'Trotzdem speichern') {
+  openModal(title, `<div class="warnbox">${lines.map(esc).join('<br>')}</div>`,
+    [{ label: 'Abbrechen' }, { label: yesLabel, cls: 'primary', action: () => { setTimeout(onYes, 0); } }]);
+}
+
+/** Startet ein Ziehen per Pointer (funktioniert mit Maus und Touch). Ohne Bewegung = Klick */
+function startDrag(e, { label, onDrop, onClick, onMove }) {
+  if (e.button > 0) return;
+  const sx = e.clientX, sy = e.clientY; let ghost = null, moved = false;
+  const mv = ev => {
+    if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 7) return;
+    moved = true; DRAGGING = true;
+    if (!ghost) { ghost = document.createElement('div'); ghost.className = 'drag-ghost'; ghost.textContent = label; document.body.appendChild(ghost); }
+    ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+    if (onMove) onMove(ev);
+  };
+  const up = ev => {
+    window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    if (ghost) ghost.remove();
+    setTimeout(() => DRAGGING = false, 0);
+    if (moved) { const el = document.elementFromPoint(ev.clientX, ev.clientY); onDrop && onDrop(el, ev); }
+    else if (ev.type === 'pointerup') onClick && onClick();
+  };
+  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+}
+const dropTableId = el => { const g = el && el.closest && el.closest('[data-table-id]'); return g ? g.dataset.tableId : null; };
+function svgPoint(svg, ev) { const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }
+
+/** Änderung an einer Reservierung mit Konfliktprüfung übernehmen */
+function applyRes(r, mutate, what) {
+  const draft = JSON.parse(JSON.stringify(r)); mutate(draft);
+  const commit = () => {
+    if (r.stayId && JSON.stringify(r.tableIds) !== JSON.stringify(draft.tableIds)) draft.manualTable = true;
+    Object.assign(r, draft); log(what || 'Reservierung geändert', `${r.name} ${r.date} ${r.time} → ${tblNames(r.tableIds) || 'ohne Tisch'}`);
+    save(); render(); toast('Gespeichert');
+  };
+  const w = conflicts(draft);
+  if (w.length) confirmModal('Bitte prüfen', w, commit); else commit();
+}
+const canEdit = () => S.user && (S.user.role === 'admin' || S.user.role === 'empfang');
+const canStatus = () => S.user && S.user.role !== 'kueche';
+
+/* =========================================================
+   7) Raumplan (SVG) – gemeinsam für Live, Editor, Hotel
+   ========================================================= */
+function chairsSVG(tb) {
+  const out = [], n = +tb.max, w = +tb.w, h = +tb.h, c = (x, y) => out.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="7" class="chair"/>`);
+  if (tb.shape === 'round') {
+    const rx = w / 2 + 10, ry = h / 2 + 10;
+    for (let i = 0; i < n; i++) { const a = -Math.PI / 2 + i * 2 * Math.PI / n; c(Math.cos(a) * rx, Math.sin(a) * ry); }
+  } else if (tb.shape === 'square' && n > 2 && n <= 4) {
+    [[0, -h / 2 - 10], [w / 2 + 10, 0], [0, h / 2 + 10], [-w / 2 - 10, 0]].slice(0, n).forEach(p => c(...p));
+  } else {
+    const horiz = w >= h, len = horiz ? w : h, other = (horiz ? h : w) / 2 + 10;
+    const sides = tb.shape === 'bench' ? [n, 0] : [Math.ceil(n / 2), Math.floor(n / 2)];
+    sides.forEach((k, s) => { for (let i = 0; i < k; i++) { const pos = -len / 2 + len * (i + 0.5) / k, off = s ? other : -other; horiz ? c(pos, off) : c(off, pos); } });
+    if (tb.shape === 'bench') out.push(horiz ? `<rect x="${-w / 2}" y="${h / 2 + 2}" width="${w}" height="12" rx="4" class="benchseat"/>`
+      : `<rect x="${w / 2 + 2}" y="${-h / 2}" width="12" height="${h}" rx="4" class="benchseat"/>`);
+  }
+  return out.join('');
+}
+function decorSVG(d, sel) {
+  const w = +d.w, h = +d.h, cls = sel ? ' sel' : '';
+  const body = {
+    wall: `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" fill="var(--decor)"/>`,
+    door: `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="6 4"/>`,
+    bar: `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="8" fill="var(--decor)"/>`,
+    buffet: `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="6" fill="var(--decor)" opacity=".7"/>`,
+    column: `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" fill="var(--decor)"/>`,
+    plant: `<circle r="${w / 2}" fill="#2da44e" opacity=".35"/>`,
+    label: ''
+  }[d.type] || '';
+  const txt = d.text ? `<text text-anchor="middle" dy="4" font-size="13" fill="var(--muted)">${esc(d.text)}</text>` : '';
+  return `<g class="decor${cls}" data-decor-id="${d.id}" transform="translate(${d.x} ${d.y}) rotate(${d.rot || 0})">${body}${txt}
+    ${sel ? `<rect x="${-w / 2 - 4}" y="${-h / 2 - 4}" width="${w + 8}" height="${h + 8}" fill="none" stroke="var(--accent)" stroke-dasharray="4 3"/>` : ''}</g>`;
+}
+
+/**
+ * opts.mode: 'live' | 'edit' | 'assign'
+ * opts.status(tb) → {st, r} ; opts.sel → ausgewählte ID ; opts.highlight → Set von Tisch-IDs
+ */
+function planSVG(room, opts = {}) {
+  const tables = DB.tables.filter(x => x.roomId === room.id);
+  const decor = DB.decor.filter(x => x.roomId === room.id);
+  const parts = [];
+  parts.push(`<defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" stroke="var(--plan-grid)" stroke-width="1"/></pattern></defs>`);
+  parts.push(`<rect width="${room.w}" height="${room.h}" fill="url(#grid)"/>`);
+  if (room.bg) parts.push(`<image href="${room.bg}" x="0" y="0" width="${room.w}" height="${room.h}" preserveAspectRatio="xMidYMid meet" opacity="${opts.mode === 'edit' ? .55 : .35}"/>`);
+  for (const d of decor) parts.push(decorSVG(d, opts.mode === 'edit' && opts.sel === d.id));
+  // Verbindungslinien für kombinierte Tische einer Reservierung
+  if (opts.status) {
+    const seen = new Set();
+    for (const tb of tables) {
+      const s = opts.status(tb); if (!s.r || seen.has(s.r.id) || (s.r.tableIds || []).length < 2) continue; seen.add(s.r.id);
+      const pts = s.r.tableIds.map(tblById).filter(x => x && x.roomId === room.id);
+      for (let i = 1; i < pts.length; i++) parts.push(`<line x1="${pts[i - 1].x}" y1="${pts[i - 1].y}" x2="${pts[i].x}" y2="${pts[i].y}" stroke="var(--text)" stroke-width="3" stroke-dasharray="6 5" opacity=".5"/>`);
+    }
+  }
+  for (const tb of tables) {
+    const s = opts.status ? opts.status(tb) : { st: 'frei' };
+    const fill = `var(--st-${s.st})`, light = s.st === 'frei';
+    const station = DB.stations.find(x => x.id === tb.station);
+    const sel = opts.sel === tb.id, hl = opts.highlight && opts.highlight.has(tb.id);
+    const w = +tb.w, h = +tb.h;
+    const shape = tb.shape === 'round' ? `<ellipse rx="${w / 2}" ry="${h / 2}" fill="${fill}" class="tbody"/>`
+      : `<rect x="${-w / 2}" y="${-h / 2}" width="${w}" height="${h}" rx="7" fill="${fill}" class="tbody"/>`;
+    const outline = (opts.showStations && station) ? (tb.shape === 'round' ? `<ellipse rx="${w / 2 + 3}" ry="${h / 2 + 3}" fill="none" stroke="${station.color}" stroke-width="4"/>`
+      : `<rect x="${-w / 2 - 3}" y="${-h / 2 - 3}" width="${w + 6}" height="${h + 6}" rx="9" fill="none" stroke="${station.color}" stroke-width="4"/>`) : '';
+    const selR = (sel || hl) ? `<rect x="${-w / 2 - 16}" y="${-h / 2 - 16}" width="${w + 32}" height="${h + 32}" rx="12" fill="none" stroke="${hl ? 'var(--hotel)' : 'var(--accent)'}" stroke-width="3" stroke-dasharray="6 4"/>` : '';
+    const col = light ? 'var(--text)' : '#fff';
+    const lines = [`<tspan x="0" font-weight="700" font-size="14">${esc(tb.name)} ${TABLE_ST_ICON[s.st] || ''}</tspan>`];
+    if (opts.mode !== 'edit') {
+      const r = s.r || s.next;
+      const small = Math.min(w, h) < 66, maxLen = small ? 7 : 12;
+      if (r && (s.r || opts.mode === 'assign')) {
+        const nm = r.name.split(' · ')[0];
+        lines.push(`<tspan x="0" dy="14" font-size="11">${esc(nm.length > maxLen ? nm.slice(0, maxLen - 1) + '…' : nm)}</tspan>`);
+        if (small) lines.push(`<tspan x="0" dy="13" font-size="10">${persons(r)}P${r.stayId ? '⌂' : ''}${r.allergies ? '⚠' : ''}</tspan>`); else lines.push(`<tspan x="0" dy="13" font-size="11">${r.time} · ${persons(r)}P${r.stayId ? ' ⌂' : ''}${r.allergies ? ' ⚠' : ''}${r.vip ? ' ★' : ''}</tspan>`);
+      } else if (s.next) {
+        lines.push(`<tspan x="0" dy="14" font-size="11" opacity=".8">ab ${s.next.time}</tspan>`);
+      } else lines.push(`<tspan x="0" dy="14" font-size="11" opacity=".7">${tb.min}–${tb.max} P</tspan>`);
+    } else lines.push(`<tspan x="0" dy="14" font-size="11" opacity=".7">${tb.min}–${tb.max} P</tspan>`);
+    const dy = -((lines.length - 1) * 13) / 2 + 4;
+    parts.push(`<g class="tb" data-table-id="${tb.id}" transform="translate(${tb.x} ${tb.y}) rotate(${tb.rot || 0})" style="cursor:pointer">
+      ${selR}<g class="chairs">${chairsSVG(tb)}</g>${outline}${shape}
+      <text text-anchor="middle" y="${dy}" fill="${col}" transform="rotate(${-(tb.rot || 0)})" pointer-events="none">${lines.join('')}</text>
+      ${opts.mode === 'edit' && sel ? `<rect class="rs-handle" x="${w / 2 - 6}" y="${h / 2 - 6}" width="14" height="14" fill="var(--accent)" style="cursor:nwse-resize"/>` : ''}</g>`);
+  }
+  return `<svg class="plan" viewBox="0 0 ${room.w} ${room.h}" data-room="${room.id}"><style>.chair{fill:var(--panel);stroke:var(--muted);stroke-width:1.5}.benchseat{fill:var(--decor)}.tbody{stroke:rgba(0,0,0,.25);stroke-width:1.5}</style>${parts.join('')}</svg>`;
+}
+const legendHTML = () => `<div class="legend">${TABLE_ST.map(s => `<span><i style="background:var(--st-${s})"></i>${TABLE_ST_ICON[s] || ''} ${t(s)}</span>`).join('')}
+  <span>⌂ Hotelgast</span><span>⚠ Allergie</span><span>★ VIP</span></div>`;
+
+/* =========================================================
+   8) App-Rahmen: Login, Kopfzeile, Navigation
+   ========================================================= */
+function renderLogin() {
+  $('#app').innerHTML = `<div class="login panel"><h3>${esc(DB.betrieb)} – Anmeldung</h3><div class="body">
+    <p class="muted">Benutzer wählen und PIN eingeben.</p>
+    <div class="userbtns">${DB.users.map(u => `<button class="btn" data-u="${u.id}"><b>${esc(u.name)}</b><small class="muted">${t(u.role)}</small></button>`).join('')}</div>
+    <p class="muted" style="font-size:12px;margin-top:14px">Demo-PINs: Admin 0000 · Empfang 1111 · Service 2222 · Küche 3333</p></div></div>`;
+  $$('[data-u]').forEach(b => b.onclick = () => {
+    const u = DB.users.find(x => x.id === b.dataset.u);
+    openModal('PIN für ' + u.name, `<input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" style="font-size:22px;text-align:center">`,
+      [{ label: 'Anmelden', cls: 'primary', keep: true, action: () => tryLogin(u) }],
+      bg => { const i = $('#pin', bg); i.focus(); i.onkeydown = e => { if (e.key === 'Enter') tryLogin(u); }; });
+  });
+}
+function tryLogin(u) {
+  if ($('#pin').value !== u.pin) { toast('PIN falsch', 'err'); return; }
+  closeModal(); S.user = u; S.view = ROLE_VIEWS[u.role][0];
+  try { sessionStorage.setItem('tischplan.user', u.id); } catch (e) {}
+  log('Anmeldung', u.name); save(); render();
+}
+function logout() { S.user = null; try { sessionStorage.removeItem('tischplan.user'); } catch (e) {} render(); }
+
+function headerHTML() {
+  const views = ROLE_VIEWS[S.user.role];
+  const showCtx = ['live', 'zeit', 'res', 'berichte'].includes(S.view);
+  return `<header><span class="brand">🍽 ${esc(DB.betrieb)}</span>
+    <nav>${views.map(v => `<button data-view="${v}" class="${S.view === v ? 'active' : ''}">${t(v)}</button>`).join('')}</nav>
+    <span class="spacer"></span>
+    ${showCtx ? `<div class="ctx"><button class="btn small" data-day="-1" aria-label="Vortag">◀</button>
+      <input type="date" id="ctxDate" value="${S.date}"><button class="btn small" data-day="1" aria-label="Folgetag">▶</button>
+      <button class="btn small" data-day="0">Heute</button>
+      <select id="ctxSvc">${DB.services.map(s => `<option value="${s.id}" ${s.id === S.serviceId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>` : ''}
+    <button class="btn small" id="themeBtn" title="Hell/Dunkel">${DB.theme === 'dark' ? '☀' : '☾'}</button>
+    <button class="btn small" id="logoutBtn" title="Abmelden">${esc(S.user.name)} ⎋</button></header>`;
+}
+function bindHeader() {
+  $$('[data-view]').forEach(b => b.onclick = () => { S.view = b.dataset.view; render(); });
+  $$('[data-day]').forEach(b => b.onclick = () => {
+    const d = +b.dataset.day; S.date = d ? addDays(S.date, d) : today();
+    S.follow = S.date === today() && d === 0; if (S.follow) { S.time = nowMin(); S.serviceId = serviceForTime(S.time); }
+    render();
+  });
+  const cd = $('#ctxDate'); if (cd) cd.onchange = () => { if (cd.value) { S.date = cd.value; S.follow = false; render(); } };
+  const cs = $('#ctxSvc'); if (cs) cs.onchange = () => { S.serviceId = cs.value; S.follow = false; S.time = toMin(svcById(cs.value).start) + 60; render(); };
+  $('#themeBtn').onclick = () => { DB.theme = DB.theme === 'dark' ? 'light' : 'dark'; save(); render(); };
+  $('#logoutBtn').onclick = logout;
+}
+
+function render() {
+  document.documentElement.dataset.theme = DB.theme;
+  if (!S.user) return renderLogin();
+  if (!ROLE_VIEWS[S.user.role].includes(S.view)) S.view = ROLE_VIEWS[S.user.role][0];
+  if (!S.serviceId || !svcById(S.serviceId)) S.serviceId = serviceForTime(S.time);
+  if (!S.roomId || !roomById(S.roomId)) S.roomId = DB.rooms[0] && DB.rooms[0].id;
+  // Scrollpositionen merken
+  const keep = {}; $$('[data-keep]').forEach(el => keep[el.dataset.keep] = [el.scrollLeft, el.scrollTop]);
+  $('#app').innerHTML = headerHTML() + '<main id="main"></main>';
+  bindHeader();
+  const main = $('#main');
+  ({ live: viewLive, zeit: viewGantt, res: viewResList, hotel: viewHotel, berichte: viewReports, editor: viewEditor, settings: viewSettings })[S.view](main);
+  $$('[data-keep]').forEach(el => { const k = keep[el.dataset.keep]; if (k) { el.scrollLeft = k[0]; el.scrollTop = k[1]; } });
+}
+
+/* =========================================================
+   9) Ansicht: Live-Tischplan
+   ========================================================= */
+function viewLive(main) {
+  const room = roomById(S.roomId), svc = svcById(S.serviceId);
+  const tm = S.time;
+  const list = DB.reservations.filter(r => r.date === S.date && r.serviceId === S.serviceId)
+    .sort((a, b) => resStart(a) - resStart(b) || a.name.localeCompare(b.name));
+  const act = list.filter(r => r.status !== 'storniert' && r.status !== 'noshow');
+  const covers = act.reduce((a, r) => a + persons(r), 0);
+  const seated = act.filter(r => SEATED_STATES.includes(r.status)).reduce((a, r) => a + persons(r), 0);
+  const unassigned = act.filter(r => !(r.tableIds || []).length && r.status !== 'abgeschlossen').length;
+  const freeNow = DB.tables.filter(x => tableStatusAt(x, S.date, S.serviceId, tm).st === 'frei').length;
+  const showOpen = S.liveOpenOnly;
+  const shown = showOpen ? list.filter(r => occupies(r)) : list;
+  main.innerHTML = `<div class="live">
+    <div class="panel">
+      <div class="roomtabs">${DB.rooms.map(r => `<button class="btn small ${r.id === S.roomId ? 'on' : ''}" data-room="${r.id}">${esc(r.name)}</button>`).join('')}
+        <span class="spacer" style="flex:1"></span>
+        <label class="chk"><input type="checkbox" id="stToggle" ${S.showStations ? 'checked' : ''}> Reviere</label>
+        <input type="time" id="liveTime" value="${fromMin(tm)}" step="300" style="width:auto">
+        <button class="btn small ${S.follow ? 'on' : ''}" id="nowBtn">Jetzt</button>
+      </div>
+      <div class="plan-wrap">${room ? planSVG(room, { mode: 'live', showStations: S.showStations, status: tb => tableStatusAt(tb, S.date, S.serviceId, tm) }) : '<p class="muted">Kein Raum angelegt.</p>'}</div>
+      ${legendHTML()}
+    </div>
+    <div class="panel">
+      <div class="kpis"><div class="kpi"><b>${act.length}</b><small>Reserv.</small></div><div class="kpi"><b>${covers}</b><small>Gäste</small></div>
+        <div class="kpi"><b>${seated}</b><small>im Haus</small></div><div class="kpi"><b>${freeNow}</b><small>Tische frei</small></div>
+        <div class="kpi" style="${unassigned ? 'color:var(--danger)' : ''}"><b>${unassigned}</b><small>ohne Tisch</small></div></div>
+      <div class="row" style="padding:10px 12px;border-bottom:1px solid var(--line)">
+        ${canEdit() ? `<button class="btn primary" id="newRes">＋ Reservierung</button><button class="btn" id="walkin">🚶 Walk-in</button>` : ''}
+        <label class="chk"><input type="checkbox" id="openOnly" ${showOpen ? 'checked' : ''}> nur aktive</label></div>
+      <div class="reslist" data-keep="liveList">
+        ${shown.length ? shown.map(r => resItemHTML(r)).join('') : `<p class="muted" style="padding:12px">Keine Reservierungen für ${esc(svc.name)}.</p>`}
+      </div>
+      ${canEdit() ? '<p class="muted" style="font-size:12px;padding:8px 12px;margin:0">Tipp: Reservierung aus der Liste auf einen Tisch ziehen.</p>' : ''}
+    </div></div>`;
+
+  $$('[data-room]', main).forEach(b => b.onclick = () => { S.roomId = b.dataset.room; render(); });
+  $('#stToggle').onchange = e => { S.showStations = e.target.checked; render(); };
+  $('#openOnly').onchange = e => { S.liveOpenOnly = e.target.checked; render(); };
+  $('#liveTime').onchange = e => { S.time = toMin(e.target.value); S.follow = false; render(); };
+  $('#nowBtn').onclick = () => { S.follow = true; S.date = today(); S.time = nowMin(); S.serviceId = serviceForTime(S.time); render(); };
+  if ($('#newRes')) $('#newRes').onclick = () => openResForm(null, {});
+  if ($('#walkin')) $('#walkin').onclick = () => openWalkin();
+
+  // Tische: Klick = Details, Ziehen = Reservierung verschieben
+  $$('.tb', main).forEach(g => g.addEventListener('pointerdown', e => {
+    const tb = tblById(g.dataset.tableId), s = tableStatusAt(tb, S.date, S.serviceId, tm);
+    startDrag(e, {
+      label: s.r ? `${s.r.name} → ?` : tb.name,
+      onClick: () => openTablePopup(tb),
+      onDrop: el => {
+        const to = dropTableId(el);
+        if (!s.r || !canEdit() || !to || to === tb.id) return;
+        applyRes(s.r, d => { d.tableIds = d.tableIds.map(x => x === tb.id ? to : x); }, 'Tisch gewechselt');
+      }
+    });
+  }));
+  // Liste: Klick = bearbeiten, Ziehen auf Tisch = zuweisen
+  $$('.ritem', main).forEach(it => it.addEventListener('pointerdown', e => {
+    const r = DB.reservations.find(x => x.id === it.dataset.res);
+    startDrag(e, {
+      label: `${r.name} (${persons(r)}P)`,
+      onClick: () => canEdit() ? openResForm(r) : openResInfo(r),
+      onDrop: el => { const to = dropTableId(el); if (to && canEdit()) applyRes(r, d => { d.tableIds = [to]; }, 'Tisch zugewiesen'); }
+    });
+  }));
+}
+function resItemHTML(r, showDate) {
+  const unas = occupies(r) && !(r.tableIds || []).length;
+  const w = conflicts(r);
+  return `<div class="ritem ${unas ? 'unassigned' : ''} ${occupies(r) || r.status === 'abgeschlossen' ? '' : 'cancel'}" data-res="${r.id}">
+    <div class="time">${showDate ? fmtShort(r.date) + '<br>' : ''}${r.time}</div>
+    <div class="main"><div class="name">${r.vip ? '★ ' : ''}${esc(r.name)}</div>
+      <div class="sub">${persons(r)} P${r.children ? ` (${r.children} Ki.)` : ''} · ${(r.tableIds || []).length ? 'Tisch ' + esc(tblNames(r.tableIds)) : '<b style="color:var(--danger)">ohne Tisch</b>'}
+      ${r.allergies ? ' · ⚠ ' + esc(r.allergies) : ''}${r.occasion ? ' · 🎉 ' + esc(r.occasion) : ''}</div></div>
+    <div style="text-align:right">${r.stayId ? '<span class="badge hotel">Hotel</span><br>' : ''}<span class="badge st" style="background:${RES_STATUS[r.status]}">${t(r.status)}</span>
+      ${w.length ? `<br><span class="badge warn" title="${esc(w.join('\n'))}">⚠ ${w.length}</span>` : ''}</div></div>`;
+}
+
+/** Popup beim Antippen eines Tisches */
+function openTablePopup(tb) {
+  const s = tableStatusAt(tb, S.date, S.serviceId, S.time);
+  const r = s.r && (SEATED_STATES.includes(s.r.status) || s.st !== 'bald' ? s.r : s.r);
+  const dayRes = DB.reservations.filter(x => x.date === S.date && (x.tableIds || []).includes(tb.id) && x.status !== 'storniert')
+    .sort((a, b) => resStart(a) - resStart(b));
+  const blocked = isBlocked(tb, S.date, S.serviceId);
+  const st = DB.stations.find(x => x.id === tb.station);
+  let body = `<p class="muted" style="margin-top:0">${tb.min}–${tb.max} Personen · ${esc(roomById(tb.roomId).name)}${st ? ' · ' + esc(st.name) : ''}
+    ${(tb.props || []).length ? '<br>' + tb.props.map(t).join(', ') : ''} · Status: <b>${t(s.st)}</b></p>`;
+  if (r) {
+    const stay = r.stayId && stayById(r.stayId);
+    body += `<div class="infobox"><b>${r.vip ? '★ ' : ''}${esc(r.name)}</b> · ${persons(r)} P${r.children ? ` (${r.children} Kinder)` : ''} · ${r.time}–${fromMin(resEnd(r))}
+      ${stay ? `<br>Hotelgast Zi. ${esc(stay.room)} · ${t(stay.board)} · bis ${fmtShort(stay.departure)}` : ''}
+      ${r.allergies ? `<br>⚠ <b>${esc(r.allergies)}</b>` : ''}${r.occasion ? `<br>🎉 ${esc(r.occasion)}` : ''}${r.highchair ? '<br>Kinderstuhl' : ''}
+      ${r.notes ? `<br>📝 ${esc(r.notes)}` : ''}<br>Status: <b>${t(r.status)}</b> · Tisch(e): ${esc(tblNames(r.tableIds))}</div>`;
+    if (canStatus()) body += `<div class="stbtns">${['eingetroffen', 'platziert', 'rechnung', 'abgeschlossen', 'noshow', 'storniert']
+      .map(x => `<button class="btn ${r.status === x ? 'on' : ''}" data-st="${x}" style="border-left:5px solid ${RES_STATUS[x]}">${t(x)}</button>`).join('')}</div>`;
+    if (canEdit()) {
+      const freeT = DB.tables.filter(x => x.id !== tb.id && !(r.tableIds || []).includes(x.id) && !tableBusy(x.id, r.date, resStart(r), resEnd(r), r.id).length);
+      body += `<div class="row" style="margin-top:12px"><select id="addTbl" style="width:auto"><option value="">Tisch dazunehmen…</option>${freeT.map(x => `<option value="${x.id}">${esc(x.name)} (${x.max}P, ${esc(roomById(x.roomId).name)})</option>`).join('')}</select>
+        ${(r.tableIds || []).length > 1 ? `<button class="btn" id="splitTbl">${esc(tb.name)} abtrennen</button>` : ''}</div>`;
+    }
+  } else if (!blocked && canEdit()) {
+    body += `<div class="row"><button class="btn primary" id="wiHere">🚶 Walk-in hier platzieren</button><button class="btn" id="resHere">＋ Reservierung für diesen Tisch</button></div>`;
+  }
+  if (blocked) body += `<div class="warnbox">Gesperrt: ${esc((tb.blocks.find(b => b.date === S.date && (!b.serviceId || b.serviceId === S.serviceId)) || {}).reason || '')}</div>`;
+  body += `<h4 style="margin:16px 0 6px">Heute an diesem Tisch</h4>${dayRes.length ? dayRes.map(x => `<div class="row" style="font-size:13px;padding:3px 0">
+    <b>${x.time}–${fromMin(resEnd(x))}</b> ${esc(x.name)} · ${persons(x)}P <span class="badge st" style="background:${RES_STATUS[x.status]}">${t(x.status)}</span></div>`).join('') : '<p class="muted">Keine Reservierungen.</p>'}`;
+  const btns = [];
+  if (canEdit()) btns.push({ label: blocked ? 'Sperre aufheben' : 'Tisch sperren', action: () => toggleBlock(tb, blocked) });
+  if (r && canEdit()) btns.push({ label: 'Reservierung bearbeiten', cls: 'primary', action: () => setTimeout(() => openResForm(r), 0) });
+  btns.push({ label: 'Schließen' });
+  openModal('Tisch ' + tb.name, body, btns, bg => {
+    $$('[data-st]', bg).forEach(b => b.onclick = () => { setStatus(r, b.dataset.st); closeModal(); });
+    const at = $('#addTbl', bg); if (at) at.onchange = () => { if (at.value) { closeModal(); applyRes(r, d => d.tableIds.push(at.value), 'Tische zusammengelegt'); } };
+    const sp = $('#splitTbl', bg); if (sp) sp.onclick = () => { closeModal(); applyRes(r, d => { d.tableIds = d.tableIds.filter(x => x !== tb.id); }, 'Tisch abgetrennt'); };
+    const wh = $('#wiHere', bg); if (wh) wh.onclick = () => { closeModal(); openWalkin(tb); };
+    const rh = $('#resHere', bg); if (rh) rh.onclick = () => { closeModal(); openResForm(null, { tableIds: [tb.id], time: fromMin(Math.max(toMin(svcById(S.serviceId).start), Math.ceil(S.time / 15) * 15)) }); };
+  });
+}
+function toggleBlock(tb, blocked) {
+  if (blocked) {
+    tb.blocks = tb.blocks.filter(b => !(b.date === S.date && (!b.serviceId || b.serviceId === S.serviceId)));
+    log('Tischsperre aufgehoben', tb.name); save(); render(); return;
+  }
+  setTimeout(() => openModal('Tisch ' + tb.name + ' sperren', `<div class="grid2"><label>Datum<input type="date" id="bDate" value="${S.date}"></label>
+    <label>Service<select id="bSvc"><option value="">ganzer Tag</option>${DB.services.map(s => `<option value="${s.id}" ${s.id === S.serviceId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label></div>
+    <label>Grund<input id="bReason" placeholder="z. B. defekt, Event, Personal"></label>`,
+    [{ label: 'Abbrechen' }, { label: 'Sperren', cls: 'primary', action: bg => {
+      tb.blocks.push({ date: $('#bDate', bg).value, serviceId: $('#bSvc', bg).value || null, reason: $('#bReason', bg).value });
+      log('Tisch gesperrt', tb.name); save(); render();
+    } }]), 0);
+}
+function setStatus(r, st) {
+  const old = r.status; r.status = st;
+  if (st === 'platziert' && old !== 'platziert' && r.date === today()) {
+    // Ankunftszeit festhalten (für spätere Auswertungen der Verweildauer)
+    r.seatedAt = nowMin();
+  }
+  if (st === 'abgeschlossen' && r.seatedAt != null && r.date === today()) r.finishedAt = nowMin();
+  log('Status geändert', `${r.name}: ${t(old)} → ${t(st)}`); save(); render();
+}
+function openResInfo(r) {
+  openModal(r.name, `<p>${fmtDate(r.date)} · ${r.time} · ${persons(r)} P · Tisch ${esc(tblNames(r.tableIds) || '–')}</p>
+    ${r.allergies ? `<div class="warnbox">Allergien: ${esc(r.allergies)}</div>` : ''}${r.notes ? `<p>📝 ${esc(r.notes)}</p>` : ''}
+    ${canStatus() ? `<div class="stbtns">${['eingetroffen', 'platziert', 'rechnung', 'abgeschlossen', 'noshow'].map(x => `<button class="btn ${r.status === x ? 'on' : ''}" data-st="${x}">${t(x)}</button>`).join('')}</div>` : ''}`,
+    [{ label: 'Schließen' }], bg => $$('[data-st]', bg).forEach(b => b.onclick = () => { setStatus(r, b.dataset.st); closeModal(); }));
+}
+
+/** Walk-in: Personenzahl → Tischvorschläge → sofort platzieren */
+function openWalkin(fixedTable) {
+  const st = { p: 2, name: '' };
+  const draw = bg => {
+    $('#wiP', bg).textContent = st.p;
+    const tm = Math.max(S.date === today() ? nowMin() : S.time, 0);
+    const draft = { id: '_new', date: S.date, serviceId: S.serviceId, time: fromMin(Math.round(tm / 5) * 5), adults: st.p, children: 0, duration: turnTime(S.serviceId, st.p), status: 'platziert', tableIds: [] };
+    const sug = fixedTable ? [{ ids: [fixedTable.id] }] : suggestTables(draft, 8);
+    $('#wiSug', bg).innerHTML = sug.length ? sug.map((s, i) => `<button class="btn ${i === 0 ? 'primary' : ''}" data-ids="${s.ids.join(',')}">${esc(tblNames(s.ids))} (${capOf(s.ids).max}P)</button>`).join('')
+      : '<span class="warnbox">Aktuell kein passender Tisch frei.</span>';
+    $$('[data-ids]', bg).forEach(b => b.onclick = () => {
+      const r = Object.assign(draft, { id: uid(), name: $('#wiName', bg).value || 'Walk-in', source: 'Walk-in', tableIds: b.dataset.ids.split(','), createdAt: Date.now(), seatedAt: nowMin() });
+      const w = conflicts(r);
+      const commit = () => { DB.reservations.push(r); log('Walk-in platziert', `${r.name} ${r.adults}P → ${tblNames(r.tableIds)}`); save(); render(); toast('Walk-in platziert'); };
+      closeModal(); if (w.length) confirmModal('Bitte prüfen', w, commit, 'Trotzdem platzieren'); else commit();
+    });
+  };
+  openModal('Walk-in' + (fixedTable ? ' an ' + fixedTable.name : ''), `<div class="row" style="justify-content:center;gap:16px">
+      <button class="btn" id="wiMinus" style="font-size:24px;min-width:60px">−</button><b id="wiP" style="font-size:36px;min-width:50px;text-align:center"></b>
+      <button class="btn" id="wiPlus" style="font-size:24px;min-width:60px">＋</button><span class="muted">Personen</span></div>
+    <label style="margin-top:12px">Name (optional)<input id="wiName" placeholder="Walk-in"></label>
+    <h4 style="margin:14px 0 6px">${fixedTable ? 'Tisch' : 'Freie Tische (beste Passung zuerst)'}</h4><div class="sugg" id="wiSug"></div>`,
+    [{ label: 'Abbrechen' }], bg => {
+      $('#wiMinus', bg).onclick = () => { st.p = Math.max(1, st.p - 1); draw(bg); };
+      $('#wiPlus', bg).onclick = () => { st.p = Math.min(40, st.p + 1); draw(bg); };
+      draw(bg);
+    });
+}
+
+/* =========================================================
+   10) Reservierungsformular (Neu / Bearbeiten)
+   ========================================================= */
+function openResForm(r, preset = {}) {
+  if (!canEdit()) return r && openResInfo(r);
+  const isNew = !r;
+  const svc0 = svcById(preset.serviceId || S.serviceId);
+  const d = r ? JSON.parse(JSON.stringify(r)) : Object.assign({
+    id: '_new', date: S.date, serviceId: svc0.id, time: svc0.hotelTime || svc0.start, adults: 2, children: 0, duration: 0,
+    name: '', phone: '', email: '', notes: '', occasion: '', allergies: '', highchair: false, vip: false, source: 'Telefon',
+    status: 'bestaetigt', tableIds: [], wishes: [], stayId: null
+  }, preset);
+  let durAuto = isNew || d.duration === turnTime(d.serviceId, persons(d));
+  if (!d.duration) d.duration = turnTime(d.serviceId, persons(d));
+  d.wishes = d.wishes || [];
+  const opt = (arr, val, lbl = x => x) => arr.map(x => `<option value="${esc(x)}" ${x === val ? 'selected' : ''}>${esc(lbl(x) || '–')}</option>`).join('');
+  const body = `<div class="grid3">
+      <label>Datum<input type="date" id="f_date" value="${d.date}"></label>
+      <label>Service<select id="f_svc">${DB.services.map(s => `<option value="${s.id}" ${s.id === d.serviceId ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+      <label>Uhrzeit<input type="time" id="f_time" value="${d.time}" step="900"></label></div>
+    <div class="sugg" id="f_seatings"></div>
+    <div class="grid3" style="margin-top:8px">
+      <label>Erwachsene<input type="number" id="f_ad" min="0" max="99" value="${d.adults}"></label>
+      <label>Kinder<input type="number" id="f_ch" min="0" max="99" value="${d.children}"></label>
+      <label>Dauer (Min.) <span id="f_durinfo"></span><input type="number" id="f_dur" min="15" step="15" value="${d.duration}"></label></div>
+    <div class="grid2" style="margin-top:8px">
+      <label>Name *<input id="f_name" value="${esc(d.name)}" autocomplete="off"></label>
+      <label>Telefon<input id="f_phone" type="tel" value="${esc(d.phone)}"></label>
+      <label>E-Mail<input id="f_mail" type="email" value="${esc(d.email)}"></label>
+      <label>Quelle<select id="f_src">${opt(SOURCES, d.source)}</select></label>
+      <label>Anlass<select id="f_occ">${opt(OCCASIONS, d.occasion)}</select></label>
+      <label>Status<select id="f_st">${opt(Object.keys(RES_STATUS), d.status, t)}</select></label></div>
+    <label style="margin-top:8px">Hotelgast verknüpfen<select id="f_stay"></select></label>
+    <label style="margin-top:8px">Allergien / Unverträglichkeiten<input id="f_all" value="${esc(d.allergies)}" placeholder="z. B. Gluten, Nüsse"></label>
+    <label style="margin-top:8px">Notizen<textarea id="f_notes">${esc(d.notes)}</textarea></label>
+    <div class="row" style="margin-top:8px"><label class="chk"><input type="checkbox" id="f_hc" ${d.highchair ? 'checked' : ''}> Kinderstuhl</label>
+      <label class="chk"><input type="checkbox" id="f_vip" ${d.vip ? 'checked' : ''}> VIP</label>
+      <span class="muted">Wünsche:</span>${PROPS.map(p => `<label class="chk"><input type="checkbox" data-wish="${p}" ${d.wishes.includes(p) ? 'checked' : ''}> ${t(p)}</label>`).join('')}</div>
+    <h4 style="margin:14px 0 6px">Tisch(e)</h4>
+    <div class="row" id="f_tables"></div>
+    <div class="row" style="margin-top:6px"><select id="f_addT" style="width:auto"></select></div>
+    <div class="muted" style="font-size:12px;margin-top:8px">Vorschläge:</div><div class="sugg" id="f_sugg"></div>
+    ${isNew ? `<label style="margin-top:12px">Wöchentlich wiederholen (Stammtisch) – Anzahl weiterer Wochen<input type="number" id="f_rep" min="0" max="52" value="0"></label>` : ''}
+    <div id="f_warn"></div>`;
+  const buttons = [];
+  if (!isNew) buttons.push({ label: 'Löschen', cls: 'danger', keep: true, action: () => {
+    confirmModal('Reservierung löschen?', [`${r.name} – ${fmtDate(r.date)} ${r.time}`], () => {
+      DB.reservations.splice(DB.reservations.indexOf(r), 1); log('Reservierung gelöscht', r.name); save(); render(); toast('Gelöscht');
+    }, 'Endgültig löschen');
+  } });
+  buttons.push({ label: 'Abbrechen' }, { label: 'Speichern', cls: 'primary', keep: true, action: () => saveForm() });
+
+  const bg = openModal(isNew ? 'Neue Reservierung' : 'Reservierung bearbeiten', body, buttons);
+  const read = () => {
+    d.date = $('#f_date', bg).value; d.serviceId = $('#f_svc', bg).value; d.time = $('#f_time', bg).value || d.time;
+    d.adults = +$('#f_ad', bg).value || 0; d.children = +$('#f_ch', bg).value || 0;
+    if (durAuto) { d.duration = turnTime(d.serviceId, persons(d)); $('#f_dur', bg).value = d.duration; } else d.duration = +$('#f_dur', bg).value || 15;
+    d.name = $('#f_name', bg).value.trim(); d.phone = $('#f_phone', bg).value.trim(); d.email = $('#f_mail', bg).value.trim();
+    d.source = $('#f_src', bg).value; d.occasion = $('#f_occ', bg).value; d.status = $('#f_st', bg).value;
+    d.allergies = $('#f_all', bg).value.trim(); d.notes = $('#f_notes', bg).value; d.highchair = $('#f_hc', bg).checked; d.vip = $('#f_vip', bg).checked;
+    d.wishes = $$('[data-wish]', bg).filter(x => x.checked).map(x => x.dataset.wish);
+  };
+  const draw = () => {
+    const s = svcById(d.serviceId);
+    $('#f_durinfo', bg).innerHTML = durAuto ? '<span class="badge">auto</span>' : '<a href="#" id="f_durauto" style="font-size:11px">auto</a>';
+    const da = $('#f_durauto', bg); if (da) da.onclick = e => { e.preventDefault(); durAuto = true; read(); draw(); };
+    $('#f_seatings', bg).innerHTML = (s.seatings || []).map(x => `<button class="btn small" data-seat="${x}">${x} Seating</button>`).join('');
+    $$('[data-seat]', bg).forEach(b => b.onclick = () => { $('#f_time', bg).value = b.dataset.seat; read(); draw(); });
+    const inHouse = DB.stays.filter(x => isInHouse(x, d.date)).sort((a, b) => a.room.localeCompare(b.room));
+    $('#f_stay', bg).innerHTML = `<option value="">– kein Hotelgast –</option>` + inHouse.map(x => `<option value="${x.id}" ${x.id === d.stayId ? 'selected' : ''}>Zi. ${esc(x.room)} · ${esc(x.name)} (${x.adults + x.children}P, ${x.board})</option>`).join('');
+    $('#f_tables', bg).innerHTML = d.tableIds.length ? d.tableIds.map(id => `<span class="badge" style="font-size:14px;padding:6px 10px">${esc((tblById(id) || {}).name)} <a href="#" data-rm="${id}">✕</a></span>`).join('')
+      + `<span class="muted">Kapazität ${capOf(d.tableIds).max} P</span>` : '<span class="muted">Noch kein Tisch – Vorschlag wählen oder später im Plan zuweisen.</span>';
+    $$('[data-rm]', bg).forEach(a => a.onclick = e => { e.preventDefault(); d.tableIds = d.tableIds.filter(x => x !== a.dataset.rm); draw(); });
+    $('#f_addT', bg).innerHTML = `<option value="">Tisch manuell hinzufügen…</option>` + DB.rooms.map(rm => `<optgroup label="${esc(rm.name)}">${DB.tables.filter(x => x.roomId === rm.id && !d.tableIds.includes(x.id))
+      .map(x => `<option value="${x.id}">${esc(x.name)} (${x.min}–${x.max}P)${tableBusy(x.id, d.date, resStart(d), resEnd(d), d.id).length ? ' – belegt' : ''}</option>`).join('')}</optgroup>`).join('');
+    const sug = suggestTables(d, 6);
+    $('#f_sugg', bg).innerHTML = sug.length ? sug.map(x => `<button class="btn small" data-sg="${x.ids.join(',')}">${esc(tblNames(x.ids))} · ${capOf(x.ids).max}P · ${esc(roomById(tblById(x.ids[0]).roomId).name)}</button>`).join('') : '<span class="muted">Kein passender freier Tisch.</span>';
+    $$('[data-sg]', bg).forEach(b => b.onclick = () => { d.tableIds = b.dataset.sg.split(','); draw(); });
+    const w = conflicts(d);
+    $('#f_warn', bg).innerHTML = w.length ? `<div class="warnbox">${w.map(esc).join('<br>')}</div>` : (d.tableIds.length ? '<div class="infobox">Keine Konflikte.</div>' : '');
+  };
+  bg.addEventListener('input', e => { if (e.target.id === 'f_dur') durAuto = false; if (e.target.id !== 'f_stay' && e.target.id !== 'f_addT') { read(); if (['f_date', 'f_svc', 'f_time', 'f_ad', 'f_ch', 'f_dur'].includes(e.target.id) || e.target.dataset.wish) draw(); else { const w = conflicts(d); $('#f_warn', bg).innerHTML = w.length ? `<div class="warnbox">${w.map(esc).join('<br>')}</div>` : ''; } } });
+  bg.addEventListener('change', e => {
+    if (e.target.id === 'f_svc') { const s = svcById(e.target.value); $('#f_time', bg).value = s.hotelTime || s.start; read(); draw(); }
+    if (e.target.id === 'f_addT' && e.target.value) { d.tableIds.push(e.target.value); draw(); }
+    if (e.target.id === 'f_stay') {
+      const st = stayById(e.target.value); d.stayId = st ? st.id : null;
+      if (st) { $('#f_name', bg).value = `${st.name} · Zi. ${st.room}`; $('#f_ad', bg).value = st.adults; $('#f_ch', bg).value = st.children;
+        if (st.allergies) $('#f_all', bg).value = st.allergies; $('#f_src', bg).value = 'Hotel'; $('#f_vip', bg).checked = !!st.vip; }
+      read(); draw();
+    }
+  });
+  draw();
+  setTimeout(() => { const n = $('#f_name', bg); if (n && isNew) n.focus(); }, 30);
+
+  function saveForm() {
+    read();
+    if (!d.name) { toast('Bitte Namen eingeben', 'err'); return; }
+    if (persons(d) < 1) { toast('Personenanzahl fehlt', 'err'); return; }
+    const reps = isNew ? Math.min(52, +($('#f_rep', bg) || {}).value || 0) : 0;
+    const commit = () => {
+      if (isNew) {
+        const base = Object.assign({}, d, { id: uid(), createdAt: Date.now() }); DB.reservations.push(base);
+        for (let i = 1; i <= reps; i++) {
+          const c = Object.assign({}, base, { id: uid(), date: addDays(base.date, 7 * i), seriesOf: base.id, tableIds: [...base.tableIds] });
+          if (c.tableIds.some(tid => tableBusy(tid, c.date, resStart(c), resEnd(c), c.id).length)) c.tableIds = [];
+          DB.reservations.push(c);
+        }
+        log('Reservierung angelegt', `${d.name} ${d.date} ${d.time} ${persons(d)}P${reps ? ` (+${reps} Wiederholungen)` : ''}`);
+      } else {
+        if (r.stayId && JSON.stringify(r.tableIds) !== JSON.stringify(d.tableIds)) d.manualTable = true;
+        Object.assign(r, d); log('Reservierung geändert', `${d.name} ${d.date} ${d.time}`);
+      }
+      save(); closeModal(); render(); toast('Gespeichert');
+    };
+    const w = conflicts(d);
+    if (w.length) {
+      // Formular offen lassen, Bestätigung als eigenes Fenster darüber
+      const keepBody = bg; keepBody.style.display = 'none';
+      const box = document.createElement('div'); box.className = 'modal-bg'; box.style.zIndex = 150;
+      box.innerHTML = `<div class="modal" style="max-width:480px"><div class="mh"><h2>Bitte prüfen</h2></div><div class="mb"><div class="warnbox">${w.map(esc).join('<br>')}</div></div>
+        <div class="mf"><button class="btn" data-no>Zurück</button><button class="btn primary" data-yes>Trotzdem speichern</button></div></div>`;
+      document.body.appendChild(box);
+      $('[data-no]', box).onclick = () => { box.remove(); keepBody.style.display = ''; };
+      $('[data-yes]', box).onclick = () => { box.remove(); commit(); };
+    } else commit();
+  }
+}
+
+/* =========================================================
+   11) Ansicht: Zeitleiste (Gantt) – Tische × Uhrzeit
+   ========================================================= */
+function viewGantt(main) {
+  const svc = svcById(S.serviceId);
+  const PX = 2.2, from = toMin(svc.start) - 30, to = Math.min(24 * 60, toMin(svc.end) + Math.max(...svc.turn.map(x => x.min)) - 30);
+  const W = (to - from) * PX, x = m => (m - from) * PX;
+  const dayRes = DB.reservations.filter(r => r.date === S.date && occupies(r) && overlaps(resStart(r), resEnd(r), from, to) || (r.date === S.date && r.status === 'abgeschlossen' && r.serviceId === S.serviceId));
+  const ticks = []; for (let m = Math.ceil(from / 30) * 30; m < to; m += 30) ticks.push(`<div class="g-tick ${m % 60 ? 'half' : ''}" style="left:${x(m)}px">${m % 60 ? '' : fromMin(m)}</div>`);
+  const headTicks = ticks.join(''), tickHTML = headTicks.replace(/>\d\d:\d\d</g, '><');
+  const nowL = S.date === today() && nowMin() > from && nowMin() < to ? `<div class="g-now" style="left:${x(nowMin())}px"></div>` : '';
+  const bar = (r, tid) => {
+    const w = conflicts(r).filter(z => z.startsWith('Überschneidung') || z.startsWith('Tisch zu') || z.includes('gesperrt'));
+    return `<div class="g-bar ${w.length ? 'conflict' : ''}" data-res="${r.id}" data-from="${tid || ''}" title="${esc(r.name + ' · ' + persons(r) + 'P · ' + r.time + '–' + fromMin(resEnd(r)) + (w.length ? '\n' + w.join('\n') : ''))}"
+      style="left:${x(resStart(r))}px;width:${Math.max(18, r.duration * PX - 2)}px;background:${RES_STATUS[r.status]}">${r.stayId ? '⌂ ' : ''}${r.vip ? '★ ' : ''}${esc(r.name)} · ${persons(r)}P${r.allergies ? ' ⚠' : ''}${canEdit() ? '<span class="rs"></span>' : ''}</div>`;
+  };
+  // Reservierungen ohne Tisch auf Spuren verteilen
+  const unas = dayRes.filter(r => !(r.tableIds || []).length && r.serviceId === S.serviceId).sort((a, b) => resStart(a) - resStart(b));
+  const lanes = []; for (const r of unas) { let l = lanes.find(L => resStart(r) >= resEnd(L[L.length - 1])); if (!l) lanes.push(l = []); l.push(r); }
+  let rows = `<div class="g-row group"><div class="g-label" style="color:var(--danger)">Ohne Tisch (${unas.length})</div><div class="g-track" style="width:${W}px">${tickHTML}</div></div>`;
+  (lanes.length ? lanes : [[]]).forEach(l => rows += `<div class="g-row" data-unassigned="1"><div class="g-label muted">—</div><div class="g-track" style="width:${W}px">${tickHTML}${nowL}${l.map(r => bar(r, '')).join('')}</div></div>`);
+  for (const room of DB.rooms) {
+    rows += `<div class="g-row group"><div class="g-label">${esc(room.name)}</div><div class="g-track" style="width:${W}px"></div></div>`;
+    for (const tb of DB.tables.filter(z => z.roomId === room.id)) {
+      const bl = isBlocked(tb, S.date, S.serviceId);
+      const st = DB.stations.find(z => z.id === tb.station);
+      rows += `<div class="g-row" data-table-id="${tb.id}"><div class="g-label"><i style="width:8px;height:8px;border-radius:50%;background:${st ? st.color : 'transparent'};display:inline-block"></i><b>${esc(tb.name)}</b><span class="muted">${tb.min}–${tb.max}P</span>${bl ? ' <span class="badge">gesperrt</span>' : ''}</div>
+        <div class="g-track" style="width:${W}px;${bl ? 'background:repeating-linear-gradient(45deg,transparent 0 8px,var(--panel2) 8px 16px)' : ''}">${tickHTML}${nowL}
+        ${dayRes.filter(r => (r.tableIds || []).includes(tb.id)).map(r => bar(r, tb.id)).join('')}</div></div>`;
+    }
+  }
+  main.innerHTML = `<div class="panel"><div class="row" style="padding:10px 14px;border-bottom:1px solid var(--line)"><b>${esc(svc.name)} · ${fmtDate(S.date)}</b>
+    <span class="muted" style="font-size:13px">${canEdit() ? 'Balken ziehen = Uhrzeit/Tisch ändern · rechten Rand ziehen = Dauer · Klick = bearbeiten' : 'Klick auf Balken = Details'}</span>
+    <span style="flex:1"></span>${canEdit() ? '<button class="btn primary" id="gNew">＋ Reservierung</button>' : ''}</div>
+    <div class="gantt" data-keep="gantt"><div class="g-head"><div class="g-label muted">Tisch</div><div class="g-track" style="width:${W}px">${headTicks}</div></div>${rows}</div></div>`;
+  if ($('#gNew')) $('#gNew').onclick = () => openResForm(null, {});
+
+  $$('.g-bar', main).forEach(el => el.addEventListener('pointerdown', e => {
+    const r = DB.reservations.find(z => z.id === el.dataset.res);
+    if (!canEdit()) { const up = () => { window.removeEventListener('pointerup', up); openResInfo(r); }; window.addEventListener('pointerup', up); return; }
+    e.preventDefault();
+    const resize = e.target.classList.contains('rs'), sx = e.clientX, sy = e.clientY, w0 = el.offsetWidth; let moved = false;
+    const mv = ev => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (!moved && Math.hypot(dx, dy) < 6) return; moved = true; DRAGGING = true;
+      if (resize) el.style.width = Math.max(20, w0 + dx) + 'px';
+      else { el.style.transform = `translate(${snap(dx, 15 * PX)}px, ${dy}px)`; el.style.zIndex = 10; el.style.pointerEvents = 'none'; }
+    };
+    const up = ev => {
+      window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); setTimeout(() => DRAGGING = false, 0);
+      if (!moved) return openResForm(r);
+      const dx = ev.clientX - sx;
+      if (resize) { const dur = Math.max(15, snap((w0 + dx) / PX, 15)); return applyRes(r, z => { z.duration = dur; }, 'Dauer geändert'); }
+      el.style.pointerEvents = '';
+      const target = document.elementFromPoint(ev.clientX, ev.clientY), row = target && target.closest('.g-row');
+      const dMin = snap(dx / PX, 15), fromT = el.dataset.from;
+      applyRes(r, z => {
+        z.time = fromMin(resStart(z) + dMin);
+        if (row && row.dataset.tableId && row.dataset.tableId !== fromT) z.tableIds = fromT ? z.tableIds.map(q => q === fromT ? row.dataset.tableId : q) : [row.dataset.tableId];
+        else if (row && row.dataset.unassigned) z.tableIds = [];
+      }, 'In Zeitleiste verschoben');
+    };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  }));
+}
+
+/* =========================================================
+   12) Ansicht: Reservierungsliste mit Filtern
+   ========================================================= */
+function viewResList(main) {
+  const F = Object.assign({ from: S.date, to: addDays(S.date, 6), svc: '', status: 'aktiv', q: '', hotel: false, unas: false }, S.resFilter);
+  S.resFilter = F;
+  const q = F.q.toLowerCase();
+  const rows = DB.reservations.filter(r => r.date >= F.from && r.date <= F.to && (!F.svc || r.serviceId === F.svc) &&
+    (F.status === 'alle' || (F.status === 'aktiv' ? occupies(r) : r.status === F.status)) &&
+    (!F.hotel || r.stayId) && (!F.unas || !(r.tableIds || []).length) &&
+    (!q || [r.name, r.phone, r.email, r.notes, r.allergies].join(' ').toLowerCase().includes(q)))
+    .sort((a, b) => a.date.localeCompare(b.date) || resStart(a) - resStart(b));
+  main.innerHTML = `<div class="panel"><div class="filters">
+      <label>Von<input type="date" data-f="from" value="${F.from}"></label><label>Bis<input type="date" data-f="to" value="${F.to}"></label>
+      <label>Service<select data-f="svc"><option value="">alle</option>${DB.services.map(s => `<option value="${s.id}" ${F.svc === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+      <label>Status<select data-f="status">${['aktiv', 'alle', ...Object.keys(RES_STATUS)].map(s => `<option value="${s}" ${F.status === s ? 'selected' : ''}>${s === 'aktiv' ? 'aktive' : s === 'alle' ? 'alle' : t(s)}</option>`).join('')}</select></label>
+      <label>Suche<input data-f="q" value="${esc(F.q)}" placeholder="Name, Telefon, Notiz…"></label>
+      <label class="chk" style="align-self:flex-end"><input type="checkbox" data-f="hotel" ${F.hotel ? 'checked' : ''}> nur Hotelgäste</label>
+      <label class="chk" style="align-self:flex-end"><input type="checkbox" data-f="unas" ${F.unas ? 'checked' : ''}> nur ohne Tisch</label>
+      <span style="flex:1"></span>
+      <button class="btn" id="csvRes" style="align-self:flex-end">CSV-Export</button>
+      ${canEdit() ? '<button class="btn primary" id="newRes2" style="align-self:flex-end">＋ Reservierung</button>' : ''}</div>
+    <div style="overflow:auto" data-keep="resList"><table class="list"><thead><tr><th>Datum</th><th>Zeit</th><th>Name</th><th>P</th><th>Tisch</th><th>Service</th><th>Status</th><th>Quelle</th><th>Hinweise</th></tr></thead>
+    <tbody>${rows.map(r => { const w = conflicts(r); return `<tr class="clickable" data-res="${r.id}"><td>${fmtShort(r.date)}</td><td>${r.time}</td>
+      <td>${r.vip ? '★ ' : ''}${esc(r.name)} ${r.stayId ? '<span class="badge hotel">Hotel</span>' : ''}</td><td>${persons(r)}</td>
+      <td>${(r.tableIds || []).length ? esc(tblNames(r.tableIds)) : '<b style="color:var(--danger)">–</b>'}</td><td>${esc((svcById(r.serviceId) || {}).name)}</td>
+      <td><span class="badge st" style="background:${RES_STATUS[r.status]}">${t(r.status)}</span></td><td>${esc(r.source || '')}</td>
+      <td style="font-size:12px">${r.allergies ? '⚠ ' + esc(r.allergies) + ' ' : ''}${r.occasion ? '🎉 ' + esc(r.occasion) + ' ' : ''}${esc(r.notes || '')}${w.length ? `<br><span style="color:var(--danger)">${w.map(esc).join('<br>')}</span>` : ''}</td></tr>`; }).join('')}</tbody></table>
+    ${rows.length ? '' : '<p class="muted" style="padding:14px">Keine Treffer.</p>'}<p class="muted" style="padding:8px 14px;font-size:12px">${rows.length} Reservierungen · ${rows.reduce((a, r) => a + persons(r), 0)} Gäste</p></div></div>`;
+  $$('[data-f]', main).forEach(el => el.addEventListener(el.type === 'checkbox' || el.tagName === 'SELECT' || el.type === 'date' ? 'change' : 'input', () => {
+    F[el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.dataset.f === 'q') { clearTimeout(viewResList.tm); viewResList.tm = setTimeout(() => { render(); const i = $('[data-f=q]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 300); }
+    else render();
+  }));
+  $$('tr[data-res]', main).forEach(tr => tr.onclick = () => openResForm(DB.reservations.find(r => r.id === tr.dataset.res)));
+  if ($('#newRes2')) $('#newRes2').onclick = () => openResForm(null, {});
+  $('#csvRes').onclick = () => downloadCSV('reservierungen.csv', [['Datum', 'Zeit', 'Ende', 'Service', 'Name', 'Erw', 'Kinder', 'Tisch', 'Status', 'Quelle', 'Telefon', 'E-Mail', 'Allergien', 'Anlass', 'Notizen', 'Zimmer']]
+    .concat(rows.map(r => [r.date, r.time, fromMin(resEnd(r)), (svcById(r.serviceId) || {}).name, r.name, r.adults, r.children, tblNames(r.tableIds), t(r.status), r.source, r.phone, r.email, r.allergies, r.occasion, r.notes, r.stayId ? (stayById(r.stayId) || {}).room : ''])));
+}
+function downloadCSV(name, rows) {
+  const csv = '﻿' + rows.map(r => r.map(c => { const s = String(c ?? ''); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(';')).join('\r\n');
+  downloadBlob(name, new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+}
+function downloadBlob(name, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+/* =========================================================
+   13) Ansicht: Hotelgäste (Aufenthalte, fester Tisch, Anreise/Abreise)
+   ========================================================= */
+const needsTable = st => stayServices(st).length > 0;
+function viewHotel(main) {
+  const D = S.hotelDate;
+  const inHouse = DB.stays.filter(x => isInHouse(x, D)).sort((a, b) => a.room.localeCompare(b.room, 'de', { numeric: true }));
+  const arrivals = DB.stays.filter(x => x.arrival === D), departures = DB.stays.filter(x => x.departure === D);
+  const open = inHouse.filter(x => needsTable(x) && !(x.tableIds || []).length);
+  const dinner = DB.services.find(s => s.type === 'abend') || DB.services[0];
+  const tmD = toMin(dinner.hotelTime || dinner.start);
+  const room = roomById(S.roomId);
+  const status = tb => {
+    const st = inHouse.find(x => (x.tableIds || []).includes(tb.id));
+    if (st) return { st: 'reserviert', r: { id: st.id, name: st.name, time: 'Zi.' + st.room, adults: st.adults, children: st.children, stayId: st.id, allergies: st.allergies, vip: st.vip, tableIds: st.tableIds } };
+    const ext = DB.reservations.find(r => r.date === D && r.serviceId === dinner.id && occupies(r) && !r.stayId && (r.tableIds || []).includes(tb.id));
+    if (ext) return { st: 'bald', r: ext };
+    if (isBlocked(tb, D, dinner.id)) return { st: 'gesperrt' };
+    return { st: 'frei' };
+  };
+  const stayRow = x => `<tr class="clickable" data-stay="${x.id}"><td><b>${esc(x.room)}</b></td><td>${x.vip ? '★ ' : ''}${esc(x.name)}</td><td>${x.adults}${x.children ? '+' + x.children : ''}</td>
+    <td><span class="badge">${x.board}</span></td><td style="font-size:12px">${fmtShort(x.arrival)} – ${fmtShort(x.departure)}</td>
+    <td>${(x.tableIds || []).length ? esc(tblNames(x.tableIds)) : needsTable(x) ? '<b style="color:var(--danger)">fehlt</b>' : '<span class="muted">frei</span>'}</td>
+    <td style="font-size:12px">${x.allergies ? '⚠ ' + esc(x.allergies) : ''}</td></tr>`;
+  const tbl = (list, empty) => list.length ? `<table class="list"><thead><tr><th>Zi.</th><th>Name</th><th>P</th><th>VP</th><th>Aufenthalt</th><th>Tisch</th><th>Hinweis</th></tr></thead><tbody>${list.map(stayRow).join('')}</tbody></table>` : `<p class="muted" style="padding:0 14px">${empty}</p>`;
+  main.innerHTML = `<div class="hotel"><div class="panel">
+      <div class="row" style="padding:10px 14px;border-bottom:1px solid var(--line)">
+        <button class="btn small" id="hPrev">◀</button><input type="date" id="hDate" value="${D}" style="width:auto"><button class="btn small" id="hNext">▶</button><button class="btn small" id="hToday">Heute</button>
+        <span style="flex:1"></span><button class="btn" id="hImport">CSV-Import</button><button class="btn primary" id="hNew">＋ Aufenthalt</button></div>
+      <div class="kpis"><div class="kpi"><b>${inHouse.length}</b><small>Zimmer belegt</small></div><div class="kpi"><b>${inHouse.reduce((a, x) => a + x.adults + x.children, 0)}</b><small>Gäste im Haus</small></div>
+        <div class="kpi"><b>${inHouse.filter(x => x.board === 'HP').length}/${inHouse.filter(x => x.board === 'VP' || x.board === 'AI').length}</b><small>HP / VP+AI</small></div>
+        <div class="kpi"><b>${arrivals.length}</b><small>Anreisen</small></div><div class="kpi"><b>${departures.length}</b><small>Abreisen</small></div>
+        <div class="kpi" style="${open.length ? 'color:var(--danger)' : ''}"><b>${open.length}</b><small>ohne Tisch</small></div></div>
+      <div class="body"><h4 style="margin:0 0 6px">Ohne festen Tisch – auf den Plan ziehen</h4>
+        <div>${open.length ? open.map(x => `<span class="stay-chip" data-chip="${x.id}">Zi. ${esc(x.room)} · ${esc(x.name)} · ${x.adults + x.children}P · ${x.board}</span>`).join('') : '<span class="muted">Alle Gäste mit Verpflegung haben einen Tisch. ✓</span>'}</div></div>
+      <h3 style="border-top:1px solid var(--line)">Anreisen ${fmtShort(D)}</h3><div data-keep="hA">${tbl(arrivals, 'Keine Anreisen.')}</div>
+      <h3 style="border-top:1px solid var(--line)">Abreisen ${fmtShort(D)}</h3><div>${tbl(departures, 'Keine Abreisen.')}</div>
+      <h3 style="border-top:1px solid var(--line)">Im Haus</h3><div>${tbl(inHouse, 'Keine Gäste im Haus.')}</div>
+    </div>
+    <div class="panel"><h3>Feste Tische · ${esc(dinner.name)} ${fmtShort(D)}</h3>
+      <div class="roomtabs">${DB.rooms.map(r => `<button class="btn small ${r.id === S.roomId ? 'on' : ''}" data-room="${r.id}">${esc(r.name)}</button>`).join('')}</div>
+      <div class="plan-wrap">${room ? planSVG(room, { mode: 'assign', status }) : ''}</div>
+      <div class="legend"><span><i style="background:var(--st-reserviert)"></i>Hotelgast (fester Tisch)</span><span><i style="background:var(--st-bald)"></i>Externe Reservierung</span>
+        <span><i style="background:var(--st-frei)"></i>frei</span><span>Ziehen: Gast-Chip → Tisch, oder Tisch → anderer Tisch</span></div></div></div>`;
+
+  $('#hDate').onchange = e => { S.hotelDate = e.target.value; render(); };
+  $('#hPrev').onclick = () => { S.hotelDate = addDays(D, -1); render(); };
+  $('#hNext').onclick = () => { S.hotelDate = addDays(D, 1); render(); };
+  $('#hToday').onclick = () => { S.hotelDate = today(); render(); };
+  $('#hNew').onclick = () => openStayForm(null);
+  $('#hImport').onclick = openStayImport;
+  $$('[data-room]', main).forEach(b => b.onclick = () => { S.roomId = b.dataset.room; render(); });
+  $$('tr[data-stay]', main).forEach(tr => tr.onclick = () => openStayForm(stayById(tr.dataset.stay)));
+  $$('[data-chip]', main).forEach(c => c.addEventListener('pointerdown', e => {
+    const st = stayById(c.dataset.chip);
+    startDrag(e, { label: `Zi. ${st.room} ${st.name}`, onClick: () => openStayForm(st), onDrop: el => { const tid = dropTableId(el); if (tid) assignStayTable(st, [tid]); } });
+  }));
+  $$('.tb', main).forEach(g => g.addEventListener('pointerdown', e => {
+    const tb = tblById(g.dataset.tableId), s = status(tb);
+    const st = s.r && s.r.stayId ? stayById(s.r.stayId) : null;
+    startDrag(e, { label: st ? `Zi. ${st.room} → ?` : tb.name,
+      onClick: () => st ? openStayForm(st) : (s.r ? openResForm(s.r) : toast(`${tb.name}: frei am ${fmtShort(D)}`)),
+      onDrop: el => { const to = dropTableId(el); if (st && to && to !== tb.id) assignStayTable(st, st.tableIds.map(x => x === tb.id ? to : x)); } });
+  }));
+}
+function assignStayTable(st, tableIds) {
+  const tb = tableIds.map(tblById), p = st.adults + st.children, cap = capOf(tableIds);
+  const w = stayTableConflicts(st, tableIds);
+  if (p > cap.max) w.unshift(`Tisch zu klein: ${p} Pers., max. ${cap.max}`);
+  const commit = () => {
+    st.tableIds = tableIds;
+    DB.reservations.filter(r => r.stayId === st.id && OPEN_STATES.includes(r.status)).forEach(r => delete r.manualTable);
+    syncStay(st); log('Fester Tisch zugewiesen', `Zi. ${st.room} ${st.name} → ${tb.map(x => x.name).join('+')}`); save(); render(); toast('Fester Tisch gespeichert');
+  };
+  if (w.length) confirmModal('Konflikte im Aufenthalt', w.slice(0, 12).concat(w.length > 12 ? [`… und ${w.length - 12} weitere`] : []), commit, 'Trotzdem zuweisen');
+  else commit();
+}
+function openStayForm(st) {
+  const isNew = !st;
+  const d = st ? JSON.parse(JSON.stringify(st)) : { id: uid(), room: '', name: '', adults: 2, children: 0, arrival: S.hotelDate, departure: addDays(S.hotelDate, 3), board: 'HP', tableIds: [], allergies: '', notes: '', vip: false, phone: '', times: {} };
+  d.times = d.times || {};
+  const timeSel = type => { const s = DB.services.find(x => x.type === type); if (!s || s.freeSeating) return '';
+    const opts = [...new Set([s.hotelTime || s.start, ...(s.seatings || [])])];
+    return `<label>Uhrzeit ${esc(s.name)}<select id="s_t_${type}">${opts.map(o => `<option ${d.times[type] === o ? 'selected' : ''}>${o}</option>`).join('')}</select></label>`; };
+  const body = `<div class="grid3"><label>Zimmer *<input id="s_room" value="${esc(d.room)}"></label><label>Name *<input id="s_name" value="${esc(d.name)}"></label>
+      <label>Verpflegung<select id="s_board">${BOARDS.map(b => `<option value="${b}" ${b === d.board ? 'selected' : ''}>${t(b)}</option>`).join('')}</select></label>
+      <label>Erwachsene<input type="number" id="s_ad" min="1" value="${d.adults}"></label><label>Kinder<input type="number" id="s_ch" min="0" value="${d.children}"></label>
+      <label>Telefon<input id="s_phone" value="${esc(d.phone)}"></label>
+      <label>Anreise<input type="date" id="s_arr" value="${d.arrival}"></label><label>Abreise<input type="date" id="s_dep" value="${d.departure}"></label>
+      <label>Fester Tisch<select id="s_tbl"><option value="">– keiner –</option>${DB.tables.map(x => `<option value="${x.id}" ${(d.tableIds || [])[0] === x.id ? 'selected' : ''}>${esc(x.name)} (${x.min}–${x.max}P, ${esc(roomById(x.roomId).name)})</option>`).join('')}</select></label></div>
+    <div class="grid2" style="margin-top:8px">${timeSel('mittag')}${timeSel('abend')}</div>
+    <label style="margin-top:8px">Allergien<input id="s_all" value="${esc(d.allergies)}"></label>
+    <label style="margin-top:8px">Notizen<textarea id="s_notes">${esc(d.notes)}</textarea></label>
+    <label class="chk" style="margin-top:8px"><input type="checkbox" id="s_vip" ${d.vip ? 'checked' : ''}> VIP / Stammgast</label>
+    <p class="muted" style="font-size:12px">Halbpension = Abendessen, Vollpension = Mittag + Abend, All-Inclusive = alle Services mit Tischzuweisung. Reservierungen werden automatisch für jede Nacht angelegt.</p>
+    ${!isNew ? `<h4 style="margin:12px 0 6px">Reservierungen dieses Aufenthalts</h4>${DB.reservations.filter(r => r.stayId === d.id).sort((a, b) => a.date.localeCompare(b.date) || resStart(a) - resStart(b))
+      .map(r => `<div style="font-size:13px">${fmtShort(r.date)} ${esc(svcById(r.serviceId).name)} ${r.time} · Tisch ${esc(tblNames(r.tableIds) || '–')}${r.manualTable ? ' <span class="badge">manuell</span>' : ''} · ${t(r.status)}</div>`).join('') || '<span class="muted">keine</span>'}` : ''}`;
+  const btns = [];
+  if (!isNew) btns.push({ label: 'Löschen', cls: 'danger', keep: true, action: () => confirmModal('Aufenthalt löschen?', [`Zi. ${st.room} ${st.name} inkl. offener Reservierungen`], () => {
+    DB.reservations = DB.reservations.filter(r => !(r.stayId === st.id && OPEN_STATES.includes(r.status)));
+    DB.stays.splice(DB.stays.indexOf(st), 1); log('Aufenthalt gelöscht', st.name); save(); render();
+  }, 'Löschen') });
+  btns.push({ label: 'Abbrechen' }, { label: 'Speichern', cls: 'primary', keep: true, action: bg => {
+    Object.assign(d, { room: $('#s_room', bg).value.trim(), name: $('#s_name', bg).value.trim(), board: $('#s_board', bg).value, adults: +$('#s_ad', bg).value || 1,
+      children: +$('#s_ch', bg).value || 0, phone: $('#s_phone', bg).value, arrival: $('#s_arr', bg).value, departure: $('#s_dep', bg).value,
+      allergies: $('#s_all', bg).value.trim(), notes: $('#s_notes', bg).value, vip: $('#s_vip', bg).checked });
+    ['mittag', 'abend'].forEach(ty => { const el = $('#s_t_' + ty, bg); if (el) d.times[ty] = el.value; });
+    const tsel = $('#s_tbl', bg).value;
+    if (!d.room || !d.name) return toast('Zimmer und Name sind Pflicht', 'err');
+    if (!(d.departure > d.arrival)) return toast('Abreise muss nach der Anreise liegen', 'err');
+    const tableIds = tsel ? ((d.tableIds || [])[0] === tsel ? d.tableIds : [tsel]) : [];
+    let target = st; if (isNew) { target = d; DB.stays.push(d); } else Object.assign(st, d);
+    closeModal();
+    const changed = JSON.stringify(tableIds) !== JSON.stringify(target.tableIds || []);
+    syncStay(target);
+    // Uhrzeiten auf offene Reservierungen übertragen
+    DB.reservations.filter(r => r.stayId === target.id && OPEN_STATES.includes(r.status)).forEach(r => { const s = svcById(r.serviceId); if (target.times[s.type]) r.time = target.times[s.type]; });
+    log(isNew ? 'Aufenthalt angelegt' : 'Aufenthalt geändert', `Zi. ${target.room} ${target.name}`);
+    if (changed && tableIds.length) { save(); render(); assignStayTable(target, tableIds); return; }
+    if (changed) { target.tableIds = []; DB.reservations.filter(r => r.stayId === target.id && OPEN_STATES.includes(r.status)).forEach(r => delete r.manualTable); syncStay(target); }
+    save(); render(); toast('Gespeichert');
+  } });
+  openModal(isNew ? 'Neuer Aufenthalt' : `Zi. ${st.room} – ${st.name}`, body, btns);
+}
+function parseDate(s) {
+  s = String(s || '').trim(); let m;
+  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/))) return s;
+  if ((m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/))) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + pad(m[2]) + '-' + pad(m[1]);
+  return null;
+}
+function openStayImport() {
+  openModal('Hotelgäste importieren (CSV)', `<p class="muted" style="margin-top:0">Spalten (Trennzeichen ; oder ,), erste Zeile = Überschrift:<br>
+    <code>Zimmer;Name;Erwachsene;Kinder;Anreise;Abreise;Verpflegung;Allergien;Notiz</code><br>Datum als TT.MM.JJJJ oder JJJJ-MM-TT · Verpflegung UF / HP / VP / AI.
+    Bestehende Aufenthalte (gleiches Zimmer + Anreise) werden aktualisiert.</p>
+    <input type="file" id="impFile" accept=".csv,text/csv,text/plain"><textarea id="impText" style="min-height:160px;margin-top:8px" placeholder="…oder hier einfügen"></textarea><div id="impRes"></div>`,
+    [{ label: 'Abbrechen' }, { label: 'Importieren', cls: 'primary', keep: true, action: bg => {
+      const lines = $('#impText', bg).value.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) return toast('Keine Daten', 'err');
+      const sep = lines[0].includes(';') ? ';' : ',';
+      let ok = 0, upd = 0; const errs = [];
+      lines.slice(1).forEach((l, i) => {
+        const c = l.split(sep).map(x => x.trim().replace(/^"|"$/g, ''));
+        const arr = parseDate(c[4]), dep = parseDate(c[5]), board = (c[6] || 'HP').toUpperCase();
+        if (!c[0] || !c[1] || !arr || !dep || !BOARDS.includes(board)) { errs.push(`Zeile ${i + 2}: ungültig`); return; }
+        let st = DB.stays.find(x => x.room === c[0] && x.arrival === arr);
+        const data = { room: c[0], name: c[1], adults: +c[2] || 1, children: +c[3] || 0, arrival: arr, departure: dep, board, allergies: c[7] || '', notes: c[8] || '' };
+        if (st) { Object.assign(st, data); upd++; } else { st = Object.assign({ id: uid(), tableIds: [], vip: false, phone: '', times: {} }, data); DB.stays.push(st); ok++; }
+        syncStay(st);
+      });
+      log('CSV-Import Hotelgäste', `${ok} neu, ${upd} aktualisiert`); save();
+      $('#impRes', bg).innerHTML = `<div class="infobox">${ok} neu, ${upd} aktualisiert${errs.length ? '<br>' + errs.map(esc).join('<br>') : ''}</div>`;
+      render();
+    } }], bg => {
+      $('#impFile', bg).onchange = e => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => $('#impText', bg).value = rd.result; rd.readAsText(f, 'utf-8'); };
+    });
+}
+
+/* =========================================================
+   14) Ansicht: Berichte (Tagesliste, Küche, Allergien, Hotel, Plan) + Druck
+   ========================================================= */
+function viewReports(main) {
+  const types = [['tag', 'Tagesübersicht'], ['kueche', 'Küchenvorschau / Briefing'], ['allergie', 'Allergie-Liste'], ['hotel', 'Hotel-Tischliste'], ['plan', 'Tischplan drucken']];
+  S.report = S.report || (S.user.role === 'kueche' ? 'kueche' : 'tag');
+  main.innerHTML = `<div class="panel"><div class="row" style="padding:10px 14px;border-bottom:1px solid var(--line)">
+    ${types.map(([k, l]) => `<button class="btn small ${S.report === k ? 'on' : ''}" data-rep="${k}">${l}</button>`).join('')}
+    <span style="flex:1"></span><button class="btn primary" id="printBtn">🖨 Drucken / PDF</button></div>
+    <div class="body report" id="repBody">${reportHTML(S.report)}</div></div>`;
+  $$('[data-rep]', main).forEach(b => b.onclick = () => { S.report = b.dataset.rep; render(); });
+  $('#printBtn').onclick = () => { $('#printArea').innerHTML = $('#repBody').innerHTML; window.print(); };
+}
+function reportHTML(type) {
+  const D = S.date, svc = svcById(S.serviceId);
+  const head = (title, sub) => `<h2>${esc(title)}</h2><p class="muted" style="margin:0 0 10px">${esc(DB.betrieb)} · ${fmtDate(D)}${sub ? ' · ' + esc(sub) : ''} · erstellt ${new Date().toLocaleString('de-DE')}</p>`;
+  const act = r => r.status !== 'storniert' && r.status !== 'noshow';
+  if (type === 'tag') {
+    return head('Tagesübersicht') + DB.services.map(s => {
+      const rs = DB.reservations.filter(r => r.date === D && r.serviceId === s.id && act(r)).sort((a, b) => resStart(a) - resStart(b));
+      if (!rs.length) return `<h4>${esc(s.name)}</h4><p class="muted">Keine Reservierungen.</p>`;
+      return `<h4>${esc(s.name)} – ${rs.length} Reservierungen, ${rs.reduce((a, r) => a + persons(r), 0)} Gäste</h4><table class="list"><thead><tr><th>Zeit</th><th>Name</th><th>P</th><th>Tisch</th><th>Hinweise</th><th>Status</th></tr></thead><tbody>
+        ${rs.map(r => `<tr><td>${r.time}</td><td>${r.vip ? '★ ' : ''}${esc(r.name)}</td><td>${r.adults}${r.children ? '+' + r.children + ' Ki.' : ''}</td><td>${esc(tblNames(r.tableIds) || '–')}</td>
+        <td>${r.allergies ? '⚠ <b>' + esc(r.allergies) + '</b> ' : ''}${r.occasion ? '🎉 ' + esc(r.occasion) + ' ' : ''}${r.highchair ? 'Kinderstuhl ' : ''}${esc(r.notes || '')}</td><td>${t(r.status)}</td></tr>`).join('')}</tbody></table>`;
+    }).join('');
+  }
+  if (type === 'kueche') {
+    const rs = DB.reservations.filter(r => r.date === D && r.serviceId === svc.id && act(r)).sort((a, b) => resStart(a) - resStart(b));
+    const slots = []; for (let m = toMin(svc.start); m <= toMin(svc.end); m += 15) slots.push({ m, c: rs.filter(r => Math.floor(resStart(r) / 15) * 15 === m).reduce((a, r) => a + persons(r), 0) });
+    const max = Math.max(1, ...slots.map(s => s.c));
+    const tot = rs.reduce((a, r) => a + persons(r), 0), kids = rs.reduce((a, r) => a + (+r.children || 0), 0), hotel = rs.filter(r => r.stayId).reduce((a, r) => a + persons(r), 0);
+    const big = rs.filter(r => persons(r) >= 6), unas = rs.filter(r => !(r.tableIds || []).length), blocked = DB.tables.filter(x => isBlocked(x, D, svc.id));
+    return head('Küchenvorschau & Briefing', svc.name) + `<div class="kpis" style="padding:0;border:0"><div class="kpi"><b>${tot}</b><small>Gäste gesamt</small></div><div class="kpi"><b>${hotel}</b><small>Hotelgäste</small></div>
+      <div class="kpi"><b>${tot - hotel}</b><small>Extern</small></div><div class="kpi"><b>${kids}</b><small>Kinder</small></div><div class="kpi"><b>${rs.filter(r => r.allergies).length}</b><small>mit Allergien</small></div></div>
+      <h4>Ankünfte pro 15 Minuten${svc.pacing ? ` (Pacing-Limit ${svc.pacing})` : ''}</h4>
+      <div class="slotbar">${slots.map(s => `<div style="height:${s.c / max * 100}%;${svc.pacing && s.c > svc.pacing ? 'background:var(--danger)' : ''}"><span>${s.c || ''}</span></div>`).join('')}</div>
+      <div class="slotlbl">${slots.map(s => `<span>${s.m % 60 ? '' : fromMin(s.m)}</span>`).join('')}</div>
+      <h4>Allergien & Unverträglichkeiten</h4>${allergyTable(rs)}
+      <h4>Anlässe & VIPs</h4>${rs.filter(r => r.occasion || r.vip).map(r => `<div>${r.time} · ${esc(r.name)} · Tisch ${esc(tblNames(r.tableIds) || '–')} · ${r.vip ? '★ VIP ' : ''}${esc(r.occasion || '')}</div>`).join('') || '<p class="muted">Keine.</p>'}
+      <h4>Briefing</h4><ul>${big.length ? `<li>Große Gruppen: ${big.map(r => `${esc(r.name)} (${persons(r)}P, ${r.time})`).join(', ')}</li>` : ''}
+        ${unas.length ? `<li><b>${unas.length} Reservierungen noch ohne Tisch</b></li>` : ''}${blocked.length ? `<li>Gesperrte Tische: ${blocked.map(x => esc(x.name)).join(', ')}</li>` : ''}
+        <li>Kinderstühle: ${rs.filter(r => r.highchair).length}</li><li>Größter Ankunfts-Slot: ${fromMin(slots.reduce((a, s) => s.c > a.c ? s : a, slots[0]).m)} (${max} Gäste)</li></ul>`;
+  }
+  if (type === 'allergie') {
+    const rs = DB.reservations.filter(r => r.date === D && act(r) && r.allergies).sort((a, b) => a.serviceId.localeCompare(b.serviceId) || resStart(a) - resStart(b));
+    return head('Allergie-Liste') + allergyTable(rs, true);
+  }
+  if (type === 'hotel') {
+    const stays = DB.stays.filter(x => isInHouse(x, D)).sort((a, b) => a.room.localeCompare(b.room, 'de', { numeric: true }));
+    const dinner = DB.services.find(s => s.type === 'abend');
+    return head('Hotel-Tischliste', 'Zimmer ↔ Tisch') + `<table class="list"><thead><tr><th>Zimmer</th><th>Name</th><th>Pers.</th><th>Verpfl.</th><th>Tisch</th><th>Uhrzeit</th><th>Abreise</th><th>Allergien / Notiz</th></tr></thead><tbody>
+      ${stays.map(x => { const r = DB.reservations.find(z => z.stayId === x.id && z.date === D && dinner && z.serviceId === dinner.id);
+        return `<tr><td><b>${esc(x.room)}</b></td><td>${x.vip ? '★ ' : ''}${esc(x.name)}${x.arrival === D ? ' <span class="badge hotel">Anreise</span>' : ''}</td><td>${x.adults}${x.children ? '+' + x.children : ''}</td><td>${x.board}</td>
+        <td><b>${esc(tblNames(r ? r.tableIds : x.tableIds) || (needsTable(x) ? '— fehlt —' : 'frei'))}</b></td><td>${r ? r.time : ''}</td><td>${fmtShort(x.departure)}</td><td>${esc([x.allergies, x.notes].filter(Boolean).join(' · '))}</td></tr>`; }).join('')}</tbody></table>
+      ${stays.length ? '' : '<p class="muted">Keine Hotelgäste im Haus.</p>'}`;
+  }
+  if (type === 'plan') {
+    return head('Tischplan', `${svc.name}, Stand ${fromMin(S.time)}`) + DB.rooms.map(room => `<h4>${esc(room.name)}</h4>${planSVG(room, { mode: 'live', status: tb => tableStatusAt(tb, D, svc.id, S.time) })}`).join('') + legendHTML();
+  }
+  return '';
+}
+function allergyTable(rs, withSvc) {
+  return rs.filter(r => r.allergies).length ? `<table class="list"><thead><tr>${withSvc ? '<th>Service</th>' : ''}<th>Zeit</th><th>Tisch</th><th>Name</th><th>P</th><th>Allergien</th><th>Notiz</th></tr></thead><tbody>
+    ${rs.filter(r => r.allergies).map(r => `<tr>${withSvc ? `<td>${esc(svcById(r.serviceId).name)}</td>` : ''}<td>${r.time}</td><td><b>${esc(tblNames(r.tableIds) || '–')}</b></td><td>${esc(r.name)}</td><td>${persons(r)}</td><td><b>${esc(r.allergies)}</b></td><td>${esc(r.notes || '')}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Keine Allergien gemeldet.</p>';
+}
+
+/* =========================================================
+   15) Ansicht: Raumplan-Editor (Admin)
+   ========================================================= */
+const DECOR_TYPES = { wall: 'Wand', door: 'Tür', bar: 'Bar/Theke', buffet: 'Buffet', column: 'Säule', plant: 'Pflanze', label: 'Text' };
+const SHAPES = { round: 'Rund', square: 'Quadratisch', rect: 'Rechteckig', bench: 'Bank/Sitzgruppe' };
+function viewEditor(main) {
+  const E = S.edit; if (!E.roomId || !roomById(E.roomId)) E.roomId = DB.rooms[0] && DB.rooms[0].id;
+  const room = roomById(E.roomId);
+  const selT = E.sel && tblById(E.sel), selD = E.sel && DB.decor.find(x => x.id === E.sel);
+  DB.layouts = DB.layouts || [];
+  const layouts = DB.layouts.filter(l => l.roomId === E.roomId);
+  main.innerHTML = `<div class="editor">
+    <div class="panel toolbox"><h3>Raum</h3><div class="body">
+      <select id="eRoom">${DB.rooms.map(r => `<option value="${r.id}" ${r.id === E.roomId ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>
+      ${room ? `<label style="margin-top:8px">Name<input id="eRoomName" value="${esc(room.name)}"></label>
+      <div class="grid2" style="margin-top:6px"><label>Breite<input type="number" id="eRoomW" value="${room.w}" step="50"></label><label>Höhe<input type="number" id="eRoomH" value="${room.h}" step="50"></label></div>
+      <label style="margin-top:6px">Grundriss-Bild<input type="file" id="eBg" accept="image/*"></label>
+      ${room.bg ? '<button class="btn small" id="eBgDel" style="margin-top:4px">Bild entfernen</button>' : ''}` : ''}
+      <button class="btn" id="eRoomAdd" style="margin-top:10px">＋ Neuer Raum</button>
+      ${room ? '<button class="btn danger" id="eRoomDel">Raum löschen</button>' : ''}</div>
+      <h3>Tisch hinzufügen</h3><div class="body">${Object.entries(SHAPES).map(([k, v]) => `<button class="btn" data-addt="${k}">${v}</button>`).join('')}</div>
+      <h3>Element hinzufügen</h3><div class="body">${Object.entries(DECOR_TYPES).map(([k, v]) => `<button class="btn" data-addd="${k}">${v}</button>`).join('')}</div>
+      <h3>Layout-Varianten</h3><div class="body">
+        ${layouts.map(l => `<div class="row" style="margin-bottom:6px"><button class="btn small" data-lload="${l.id}" style="flex:1">${esc(l.name)}</button><button class="btn small danger" data-ldel="${l.id}">✕</button></div>`).join('') || '<p class="muted" style="margin:0 0 6px;font-size:12px">Keine Varianten gespeichert.</p>'}
+        <button class="btn small" id="lSave">Aktuelles Layout speichern…</button></div>
+    </div>
+    <div class="panel"><div class="plan-wrap">${room ? planSVG(room, { mode: 'edit', sel: E.sel, showStations: true }) : '<p class="muted">Bitte Raum anlegen.</p>'}</div>
+      <p class="muted" style="font-size:12px;padding:0 12px 10px;margin:0">Ziehen zum Verschieben (Raster 10) · blaues Quadrat = Größe ändern · Klick auf freie Fläche = Auswahl aufheben</p></div>
+    <div class="panel props"><h3>${selT ? 'Tisch ' + esc(selT.name) : selD ? DECOR_TYPES[selD.type] : 'Reviere & Kombinationen'}</h3><div class="body">${selT ? tableProps(selT) : selD ? decorProps(selD) : stationProps()}</div></div>
+  </div>`;
+  bindEditor(main, room);
+}
+function tableProps(tb) {
+  return `<div class="grid2"><label>Name/Nr.<input data-p="name" value="${esc(tb.name)}"></label><label>Form<select data-p="shape">${Object.entries(SHAPES).map(([k, v]) => `<option value="${k}" ${tb.shape === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+    <label>Min. Pers.<input type="number" data-p="min" min="1" value="${tb.min}"></label><label>Max. Pers.<input type="number" data-p="max" min="1" value="${tb.max}"></label>
+    <label>Breite<input type="number" data-p="w" step="2" value="${tb.w}"></label><label>Höhe<input type="number" data-p="h" step="2" value="${tb.h}"></label>
+    <label>Drehung °<input type="number" data-p="rot" step="15" value="${tb.rot || 0}"></label>
+    <label>Revier<select data-p="station"><option value="">–</option>${DB.stations.map(s => `<option value="${s.id}" ${tb.station === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+    <label>Raum<select data-p="roomId">${DB.rooms.map(r => `<option value="${r.id}" ${tb.roomId === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label></div>
+    <div style="margin:8px 0">${PROPS.map(p => `<label class="chk"><input type="checkbox" data-prop="${p}" ${(tb.props || []).includes(p) ? 'checked' : ''}> ${t(p)}</label>`).join('')}</div>
+    <div class="row"><button class="btn small" id="eDup">Duplizieren</button><button class="btn small danger" id="eDel">Löschen</button></div>`;
+}
+function decorProps(d) {
+  return `<div class="grid2"><label>Typ<select data-p="type">${Object.entries(DECOR_TYPES).map(([k, v]) => `<option value="${k}" ${d.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+    <label>Text<input data-p="text" value="${esc(d.text)}"></label><label>Breite<input type="number" data-p="w" value="${d.w}"></label><label>Höhe<input type="number" data-p="h" value="${d.h}"></label>
+    <label>Drehung °<input type="number" data-p="rot" step="15" value="${d.rot || 0}"></label></div>
+    <div class="row" style="margin-top:8px"><button class="btn small" id="eDup">Duplizieren</button><button class="btn small danger" id="eDel">Löschen</button></div>`;
+}
+function stationProps() {
+  return `<p class="muted" style="margin-top:0;font-size:13px">Tisch anklicken, um ihn zu bearbeiten.</p><h4 style="margin:6px 0">Service-Reviere</h4>
+    ${DB.stations.map(s => `<div class="row" style="margin-bottom:6px"><input type="color" data-stc="${s.id}" value="${s.color}" style="width:44px;padding:2px"><input data-stn="${s.id}" value="${esc(s.name)}" style="flex:1;width:auto">
+      <button class="btn small danger" data-std="${s.id}">✕</button></div>`).join('')}
+    <button class="btn small" id="stAdd">＋ Revier</button>
+    <h4 style="margin:14px 0 6px">Feste Tischkombinationen</h4>
+    ${DB.combos.map(c => `<div class="row" style="margin-bottom:4px"><span style="flex:1">${esc(tblNames(c.tableIds))} (${capOf(c.tableIds).max}P)</span><button class="btn small danger" data-cd="${c.id}">✕</button></div>`).join('')}
+    <div class="row"><input id="cNew" placeholder="z. B. T7+T8" style="flex:1;width:auto"><button class="btn small" id="cAdd">＋</button></div>`;
+}
+function bindEditor(main, room) {
+  const E = S.edit;
+  const commit = (msg) => { save(); render(); if (msg) log(msg, ''); };
+  $('#eRoom').onchange = e => { E.roomId = e.target.value; E.sel = null; render(); };
+  $('#eRoomAdd').onclick = () => { const r = { id: uid(), name: 'Neuer Raum', w: 900, h: 600, bg: '' }; DB.rooms.push(r); E.roomId = r.id; E.sel = null; commit('Raum angelegt'); };
+  if (room) {
+    $('#eRoomName').onchange = e => { room.name = e.target.value || room.name; commit(); };
+    $('#eRoomW').onchange = e => { room.w = Math.max(300, +e.target.value); commit(); };
+    $('#eRoomH').onchange = e => { room.h = Math.max(200, +e.target.value); commit(); };
+    $('#eBg').onchange = e => {
+      const f = e.target.files[0]; if (!f) return;
+      if (f.size > 1.5e6) return toast('Bild zu groß (max. 1,5 MB) – bitte verkleinern', 'err');
+      const rd = new FileReader(); rd.onload = () => { room.bg = rd.result; commit('Grundriss hochgeladen'); }; rd.readAsDataURL(f);
+    };
+    if ($('#eBgDel')) $('#eBgDel').onclick = () => { room.bg = ''; commit(); };
+    $('#eRoomDel').onclick = () => {
+      const used = DB.tables.filter(x => x.roomId === room.id).length;
+      confirmModal('Raum löschen?', [`${room.name} mit ${used} Tischen wird gelöscht. Zugewiesene Reservierungen verlieren ihren Tisch.`], () => {
+        const ids = DB.tables.filter(x => x.roomId === room.id).map(x => x.id);
+        DB.reservations.forEach(r => r.tableIds = (r.tableIds || []).filter(x => !ids.includes(x)));
+        DB.stays.forEach(s => s.tableIds = (s.tableIds || []).filter(x => !ids.includes(x)));
+        DB.tables = DB.tables.filter(x => x.roomId !== room.id); DB.decor = DB.decor.filter(x => x.roomId !== room.id);
+        DB.combos = DB.combos.filter(c => !c.tableIds.some(x => ids.includes(x)));
+        DB.rooms.splice(DB.rooms.indexOf(room), 1); E.roomId = null; E.sel = null; commit('Raum gelöscht');
+      }, 'Löschen');
+    };
+  }
+  $$('[data-addt]', main).forEach(b => b.onclick = () => {
+    if (!room) return;
+    const sh = b.dataset.addt, dims = { round: [90, 90, 2, 4], square: [70, 70, 2, 4], rect: [160, 80, 4, 8], bench: [60, 160, 3, 5] }[sh];
+    let n = DB.tables.length + 1; while (DB.tables.some(x => x.name === 'T' + n)) n++;
+    const tb = { id: uid(), roomId: room.id, name: 'T' + n, shape: sh, x: room.w / 2, y: room.h / 2, w: dims[0], h: dims[1], rot: 0, min: dims[2], max: dims[3], station: '', props: [], blocks: [] };
+    DB.tables.push(tb); E.sel = tb.id; commit('Tisch angelegt');
+  });
+  $$('[data-addd]', main).forEach(b => b.onclick = () => {
+    if (!room) return;
+    const ty = b.dataset.addd, dims = { wall: [300, 10], door: [80, 14], bar: [200, 50], buffet: [60, 200], column: [26, 26], plant: [40, 40], label: [160, 20] }[ty];
+    const d = { id: uid(), roomId: room.id, type: ty, x: room.w / 2, y: room.h / 2, w: dims[0], h: dims[1], rot: 0, text: ty === 'label' ? 'Text' : '' };
+    DB.decor.push(d); E.sel = d.id; commit();
+  });
+  // Layout-Varianten
+  $('#lSave').onclick = () => openModal('Layout speichern', '<label>Name der Variante<input id="lName" placeholder="z. B. Bankett, Sommer, Hochzeit"></label>', [{ label: 'Abbrechen' }, { label: 'Speichern', cls: 'primary', action: bg => {
+    const pos = {}; DB.tables.filter(x => x.roomId === room.id).forEach(x => pos[x.id] = { x: x.x, y: x.y, rot: x.rot, w: x.w, h: x.h, shape: x.shape, min: x.min, max: x.max });
+    DB.layouts.push({ id: uid(), roomId: room.id, name: $('#lName', bg).value || 'Variante', pos }); commit('Layout-Variante gespeichert');
+  } }]);
+  $$('[data-lload]', main).forEach(b => b.onclick = () => { const l = DB.layouts.find(x => x.id === b.dataset.lload);
+    DB.tables.forEach(x => { if (l.pos[x.id]) Object.assign(x, l.pos[x.id]); }); commit('Layout-Variante geladen: ' + l.name); toast('Layout „' + l.name + '“ aktiv'); });
+  $$('[data-ldel]', main).forEach(b => b.onclick = () => { DB.layouts = DB.layouts.filter(x => x.id !== b.dataset.ldel); commit(); });
+
+  // Eigenschaften
+  const selObj = tblById(E.sel) || DB.decor.find(x => x.id === E.sel);
+  $$('[data-p]', main).forEach(el => el.onchange = () => {
+    const k = el.dataset.p; let v = el.value;
+    if (['min', 'max', 'w', 'h', 'rot'].includes(k)) v = +v || 0;
+    if (k === 'roomId' && v !== selObj.roomId) { E.roomId = v; }
+    selObj[k] = v; if (selObj.min > selObj.max) selObj.max = selObj.min; commit();
+  });
+  $$('[data-prop]', main).forEach(el => el.onchange = () => { const p = el.dataset.prop; selObj.props = (selObj.props || []).filter(x => x !== p); if (el.checked) selObj.props.push(p); commit(); });
+  if ($('#eDup')) $('#eDup').onclick = () => {
+    const c = JSON.parse(JSON.stringify(selObj)); c.id = uid(); c.x += 30; c.y += 30;
+    if (c.name) { let n = 2; while (DB.tables.some(x => x.name === selObj.name + '-' + n)) n++; c.name = selObj.name + '-' + n; c.blocks = []; DB.tables.push(c); } else DB.decor.push(c);
+    E.sel = c.id; commit();
+  };
+  if ($('#eDel')) $('#eDel').onclick = () => {
+    if (selObj.name !== undefined && DB.tables.includes(selObj)) {
+      const refs = DB.reservations.filter(r => (r.tableIds || []).includes(selObj.id) && r.date >= today() && occupies(r)).length;
+      const doDel = () => { DB.tables.splice(DB.tables.indexOf(selObj), 1); DB.reservations.forEach(r => r.tableIds = (r.tableIds || []).filter(x => x !== selObj.id));
+        DB.stays.forEach(s => s.tableIds = (s.tableIds || []).filter(x => x !== selObj.id)); DB.combos = DB.combos.filter(c => !c.tableIds.includes(selObj.id)); E.sel = null; commit('Tisch gelöscht: ' + selObj.name); };
+      if (refs) confirmModal('Tisch löschen?', [`${refs} künftige Reservierung(en) verlieren den Tisch ${selObj.name}.`], doDel, 'Löschen'); else doDel();
+    } else { DB.decor.splice(DB.decor.indexOf(selObj), 1); E.sel = null; commit(); }
+  };
+  // Reviere & Kombinationen
+  $$('[data-stc]', main).forEach(el => el.onchange = () => { DB.stations.find(s => s.id === el.dataset.stc).color = el.value; commit(); });
+  $$('[data-stn]', main).forEach(el => el.onchange = () => { DB.stations.find(s => s.id === el.dataset.stn).name = el.value; commit(); });
+  $$('[data-std]', main).forEach(el => el.onclick = () => { DB.stations = DB.stations.filter(s => s.id !== el.dataset.std); DB.tables.forEach(x => { if (x.station === el.dataset.std) x.station = ''; }); commit(); });
+  if ($('#stAdd')) $('#stAdd').onclick = () => { DB.stations.push({ id: uid(), name: 'Revier ' + (DB.stations.length + 1), color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0') }); commit(); };
+  $$('[data-cd]', main).forEach(el => el.onclick = () => { DB.combos = DB.combos.filter(c => c.id !== el.dataset.cd); commit(); });
+  if ($('#cAdd')) $('#cAdd').onclick = () => {
+    const names = $('#cNew').value.split(/[+,; ]+/).filter(Boolean), ids = names.map(n => (DB.tables.find(x => x.name.toLowerCase() === n.toLowerCase()) || {}).id);
+    if (ids.length < 2 || ids.some(x => !x)) return toast('Mindestens zwei gültige Tischnamen, z. B. T7+T8', 'err');
+    DB.combos.push({ id: uid(), name: names.join('+'), tableIds: ids }); commit('Kombination angelegt');
+  };
+
+  // Ziehen/Größe im Plan
+  const svg = $('svg.plan', main); if (!svg) return;
+  svg.addEventListener('pointerdown', e => {
+    const g = e.target.closest('[data-table-id],[data-decor-id]');
+    if (!g) { if (E.sel) { E.sel = null; render(); } return; }
+    const id = g.dataset.tableId || g.dataset.decorId, obj = tblById(id) || DB.decor.find(x => x.id === id);
+    const resize = e.target.classList.contains('rs-handle');
+    const wasSel = E.sel === id; E.sel = id;
+    e.preventDefault();
+    const p0 = svgPoint(svg, e), o = { x: obj.x, y: obj.y, w: obj.w, h: obj.h }; let moved = false;
+    const mv = ev => {
+      const p = svgPoint($('svg.plan', main), ev), dx = p.x - p0.x, dy = p.y - p0.y; moved = true;
+      if (resize) { obj.w = Math.max(20, snap(o.w + dx * 2, 2)); obj.h = Math.max(10, snap(o.h + dy * 2, 2)); if (obj.shape === 'round' || obj.shape === 'square') obj.h = obj.w; }
+      else { obj.x = Math.min(room.w, Math.max(0, snap(o.x + dx, 10))); obj.y = Math.min(room.h, Math.max(0, snap(o.y + dy, 10))); }
+      const wrap = $('.plan-wrap', main); wrap.innerHTML = planSVG(room, { mode: 'edit', sel: E.sel, showStations: true });
+    };
+    const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); if (moved || !wasSel) commit(); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  });
+}
+
+/* =========================================================
+   16) Ansicht: Einstellungen (Admin)
+   ========================================================= */
+function viewSettings(main) {
+  const turnStr = s => s.turn.map(x => `${x.maxP >= 99 ? '99' : x.maxP}:${x.min}`).join(', ');
+  main.innerHTML = `<div class="hotel">
+    <div class="panel"><h3>Betrieb & Services</h3><div class="body">
+      <label>Name des Betriebs<input id="cfName" value="${esc(DB.betrieb)}"></label>
+      <p class="muted" style="font-size:12px">Verweildauer: „bis Personen:Minuten“, z. B. <code>2:105, 4:120, 6:150, 99:180</code>. Pacing = max. ankommende Gäste je 15 Min. (0 = aus). Seatings = feste Zeiten, z. B. 18:30, 20:30.</p>
+      ${DB.services.map(s => `<div class="panel" style="padding:10px;margin-bottom:10px;box-shadow:none"><div class="grid3">
+        <label>Name<input data-sv="${s.id}" data-k="name" value="${esc(s.name)}"></label>
+        <label>Typ<select data-sv="${s.id}" data-k="type">${['fruehstueck', 'mittag', 'abend'].map(x => `<option ${s.type === x ? 'selected' : ''} value="${x}">${{ fruehstueck: 'Frühstück', mittag: 'Mittag', abend: 'Abend' }[x]}</option>`).join('')}</select></label>
+        <label>Hotel-Standardzeit<input type="time" data-sv="${s.id}" data-k="hotelTime" value="${s.hotelTime || ''}"></label>
+        <label>Beginn<input type="time" data-sv="${s.id}" data-k="start" value="${s.start}"></label><label>Letzte Reservierung<input type="time" data-sv="${s.id}" data-k="end" value="${s.end}"></label>
+        <label>Pacing<input type="number" min="0" data-sv="${s.id}" data-k="pacing" value="${s.pacing || 0}"></label></div>
+        <div class="grid2" style="margin-top:6px"><label>Verweildauer<input data-sv="${s.id}" data-k="turn" value="${turnStr(s)}"></label><label>Seatings<input data-sv="${s.id}" data-k="seatings" value="${(s.seatings || []).join(', ')}"></label></div>
+        <label class="chk" style="margin-top:6px"><input type="checkbox" data-sv="${s.id}" data-k="freeSeating" ${s.freeSeating ? 'checked' : ''}> Freie Platzwahl (keine Tischzuweisung für Hotelgäste)</label>
+        <button class="btn small danger" data-svdel="${s.id}" style="margin-top:6px">Service löschen</button></div>`).join('')}
+      <button class="btn" id="svAdd">＋ Service</button></div></div>
+    <div><div class="panel"><h3>Benutzer & Rollen</h3><div class="body">
+      ${DB.users.map(u => `<div class="row" style="margin-bottom:6px"><input data-us="${u.id}" data-k="name" value="${esc(u.name)}" style="flex:2;width:auto">
+        <select data-us="${u.id}" data-k="role" style="flex:2;width:auto">${Object.keys(ROLE_VIEWS).map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${t(r)}</option>`).join('')}</select>
+        <input data-us="${u.id}" data-k="pin" value="${esc(u.pin)}" style="flex:1;width:auto" inputmode="numeric" placeholder="PIN">
+        <button class="btn small danger" data-usdel="${u.id}" ${u.id === S.user.id ? 'disabled' : ''}>✕</button></div>`).join('')}
+      <button class="btn small" id="usAdd">＋ Benutzer</button>
+      <p class="muted" style="font-size:12px">Hinweis: Die PIN-Anmeldung dient der Rollentrennung im Betrieb und ist kein Schutz gegen gezielten Zugriff (Daten liegen im Browser).</p></div></div>
+    <div class="panel" style="margin-top:14px"><h3>Daten</h3><div class="body"><div class="row">
+      <button class="btn" id="dExp">Sicherung exportieren (JSON)</button><label class="btn" style="color:var(--text)">Sicherung importieren<input type="file" id="dImp" accept=".json" class="hidden"></label>
+      <button class="btn" id="dDemo">Demo-Daten neu erzeugen</button><button class="btn danger" id="dClear">Alle Reservierungen & Gäste löschen</button></div>
+      <p class="muted" style="font-size:12px">Speicherort: dieser Browser (localStorage, ca. ${Math.round(JSON.stringify(DB).length / 1024)} KB belegt). Regelmäßig sichern!</p></div></div>
+    <div class="panel" style="margin-top:14px"><h3>Protokoll (letzte 150 Änderungen)</h3><div style="max-height:420px;overflow:auto"><table class="list"><thead><tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Details</th></tr></thead><tbody>
+      ${DB.audit.slice(0, 150).map(a => `<tr><td style="white-space:nowrap;font-size:12px">${new Date(a.ts).toLocaleString('de-DE')}</td><td>${esc(a.user)}</td><td>${esc(a.action)}</td><td style="font-size:12px">${esc(a.detail)}</td></tr>`).join('')}</tbody></table></div></div></div></div>`;
+
+  $('#cfName').onchange = e => { DB.betrieb = e.target.value; save(); render(); };
+  $$('[data-sv]', main).forEach(el => el.onchange = () => {
+    const s = svcById(el.dataset.sv), k = el.dataset.k;
+    if (k === 'turn') {
+      const rows = el.value.split(',').map(x => x.split(':').map(Number)).filter(x => x.length === 2 && x[0] > 0 && x[1] > 0).map(([p, m]) => ({ maxP: p, min: m }));
+      if (!rows.length) return toast('Format: 2:90, 4:120, 99:150', 'err'); s.turn = rows.sort((a, b) => a.maxP - b.maxP);
+    } else if (k === 'seatings') s.seatings = el.value.split(/[,; ]+/).filter(x => /^\d{1,2}:\d{2}$/.test(x));
+    else if (k === 'freeSeating') s.freeSeating = el.checked;
+    else if (k === 'pacing') s.pacing = +el.value || 0;
+    else s[k] = el.value;
+    log('Service geändert', s.name); save(); render();
+  });
+  $$('[data-svdel]', main).forEach(b => b.onclick = () => {
+    const s = svcById(b.dataset.svdel), n = DB.reservations.filter(r => r.serviceId === s.id).length;
+    if (DB.services.length < 2) return toast('Mindestens ein Service nötig', 'err');
+    confirmModal('Service löschen?', [`${s.name} – ${n} Reservierungen werden ebenfalls gelöscht.`], () => {
+      DB.reservations = DB.reservations.filter(r => r.serviceId !== s.id); DB.services.splice(DB.services.indexOf(s), 1); S.serviceId = null; log('Service gelöscht', s.name); save(); render();
+    }, 'Löschen');
+  });
+  $('#svAdd').onclick = () => { DB.services.push({ id: uid(), name: 'Neuer Service', type: 'abend', start: '17:00', end: '20:00', hotelTime: '18:00', freeSeating: false, pacing: 0, turn: [{ maxP: 2, min: 90 }, { maxP: 99, min: 120 }], seatings: [] }); save(); render(); };
+  $$('[data-us]', main).forEach(el => el.onchange = () => { const u = DB.users.find(x => x.id === el.dataset.us); u[el.dataset.k] = el.value; log('Benutzer geändert', u.name); save(); });
+  $$('[data-usdel]', main).forEach(b => b.onclick = () => { DB.users = DB.users.filter(u => u.id !== b.dataset.usdel); save(); render(); });
+  $('#usAdd').onclick = () => { DB.users.push({ id: uid(), name: 'Neu', role: 'service', pin: String(Math.floor(1000 + Math.random() * 9000)) }); save(); render(); };
+  $('#dExp').onclick = () => downloadBlob(`tischplan-sicherung-${today()}.json`, new Blob([JSON.stringify(DB, null, 1)], { type: 'application/json' }));
+  $('#dImp').onchange = e => {
+    const f = e.target.files[0]; if (!f) return; const rd = new FileReader();
+    rd.onload = () => { try { const d = JSON.parse(rd.result); if (!d.version || !d.tables) throw new Error('Kein gültiges Tischplan-Backup');
+      confirmModal('Sicherung einspielen?', ['Alle aktuellen Daten werden ersetzt.'], () => { DB = d; log('Sicherung importiert', f.name); save(); render(); toast('Sicherung eingespielt'); }, 'Ersetzen');
+    } catch (err) { toast(err.message, 'err'); } };
+    rd.readAsText(f);
+  };
+  $('#dDemo').onclick = () => confirmModal('Demo-Daten neu erzeugen?', ['Alle aktuellen Daten werden durch Beispieldaten ersetzt.'], () => {
+    const u = S.user; DB = demoData(); S.user = DB.users.find(x => x.role === u.role) || DB.users[0]; save(); render(); toast('Demo-Daten erzeugt'); }, 'Ersetzen');
+  $('#dClear').onclick = () => confirmModal('Alles löschen?', ['Alle Reservierungen und Hotelaufenthalte werden gelöscht. Räume, Tische und Einstellungen bleiben erhalten.'], () => {
+    DB.reservations = []; DB.stays = []; log('Reservierungen & Gäste gelöscht', ''); save(); render(); }, 'Löschen');
+}
+
+/* =========================================================
+   17) Start
+   ========================================================= */
+load();
+try { const uidS = sessionStorage.getItem('tischplan.user'); if (uidS) S.user = DB.users.find(u => u.id === uidS) || null; } catch (e) {}
+S.serviceId = serviceForTime(S.time);
+render();
+setInterval(() => {
+  if (!S.user || !S.follow || modalOpen() || DRAGGING || !['live', 'zeit'].includes(S.view)) return;
+  S.time = nowMin(); S.date = today(); render();
+}, 30000);
+</script>
+</body>
+</html>
